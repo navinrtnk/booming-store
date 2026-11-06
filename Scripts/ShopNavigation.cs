@@ -6,6 +6,7 @@ namespace BoomingStore;
 /// <summary>A half-metre grid, independent of render meshes, rebuilt after every layout edit.</summary>
 public sealed class ShopNavigation
 {
+    public int Revision { get; private set; }
     public const int Width = 24, Depth = 20;
     private static readonly Vector2I[] Directions = [Vector2I.Left, Vector2I.Right, Vector2I.Up, Vector2I.Down];
     private readonly int[] _parents = new int[Width * Depth];
@@ -20,7 +21,7 @@ public sealed class ShopNavigation
     public static Vector3 Point(Vector2I c) => new(c.X * .5f - 5.75f, 0, c.Y * .5f - 4.75f);
     public void Rebuild(StoreState state)
     {
-        Array.Clear(_blocked); _edges.Clear(); _searchOrigin = -1;
+        Revision++; Array.Clear(_blocked); _edges.Clear(); _searchOrigin = -1;
         foreach (var i in state.Items.Where(i => i.Blocks))
         {
             var size = i.Footprint / 2 + Vector2.One * .16f;
@@ -74,6 +75,12 @@ public sealed class ShopNavigation
             }
         }
         return true;
+    }
+    public bool CanStep(Vector3 from, Vector3 to)
+    {
+        if (!InLot(from) || !InLot(to)) return false;
+        var a = Cell(from); var b = Cell(to);
+        return !_blocked[b.X, b.Y] && Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y) <= 1 && !_edges.Contains((a.X, a.Y, b.X, b.Y));
     }
     public bool CanReach(Vector3 from, Vector3 to) => InLot(to) && Search(from) && _parents[Index(Cell(to))] != -1;
     public List<Vector3>? Path(Vector3 from, Vector3 to)

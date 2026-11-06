@@ -100,6 +100,14 @@ public sealed class StoreVisuals
     {
         var n = Group(parent, "Object" + item.Id, item.Position);
         n.RotationDegrees = new(0, item.Rotation, 0);
+        if (!preview && item.Stock == 0)
+        {
+            Selection(n, new StoreItem { Kind = item.Kind, X = 0, Y = 0, Z = 0, Rotation = 0 }, "ba9160");
+            var vacant = Text(n, "EmptySpot", "EMPTY · CLICK TO STOCK", new(0, .13f, 0), .0025f, new("986541"), 24);
+            vacant.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+            vacant.OutlineSize = 5; vacant.OutlineModulate = new("fff4df");
+            return n;
+        }
         var c = Color(item.Color);
         switch (item.Kind)
         {
@@ -170,6 +178,16 @@ public sealed class StoreVisuals
                 for (var i = -13; i <= 13; i++)
                     foreach (var z in new[] { -.9f, .9f }) Box(n, "WovenStripe", new(.022f, .003f, .11f), new(i * .1f, .024f, z), Linen);
                 break;
+            case "stockroom":
+                RoundedBox(n, "Cabinet", new(1, 1.75f, .7f), new(0, .875f, 0), c, .02f);
+                RoundedBox(n, "Top", new(1.04f, .055f, .74f), new(0, 1.78f, 0), Oak);
+                foreach (var x in new[] { -.24f, .24f })
+                {
+                    RoundedBox(n, "Door", new(.45f, 1.62f, .035f), new(x, .87f, .36f), Oak);
+                    Rod(n, "Handle", new(x > 0 ? .05f : -.05f, .8f, .40f), new(x > 0 ? .05f : -.05f, 1.05f, .40f), .012f, Brass);
+                }
+                Text(n, "SupplySign", "SUPPLIES", new(0, 1.92f, 0), .004f, Dark.AlbedoColor, 30).Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+                break;
             case "checkout":
                 RoundedBox(n, "Counter", new(1.8f, .94f, .9f), new(0, .47f, 0), c, .025f);
                 RoundedBox(n, "MarbleTop", new(1.86f, .065f, .96f), new(0, .97f, 0), Stone);
@@ -181,13 +199,9 @@ public sealed class StoreVisuals
         }
         if (!preview && item.ForSale)
         {
-            if (item.Stock == 0)
-            {
-                foreach (var child in n.GetChildren().OfType<GeometryInstance3D>()) child.Transparency = .82f;
-            }
             var y = item.Kind switch { "chair" => .98f, "plant" => 1.95f, "lamp" => 1.95f, "vase" => .62f, "shelf" => 2.3f, "checkout" => 1.5f, _ => .4f };
-            var tag = Text(n, "Price", item.Stock == 0 ? "RESTOCK" : $"${item.Price:0}", new(0, y, 0), .004f,
-                item.Stock == 0 ? new("b96545") : new("224b3c"), 28);
+            var tag = Text(n, "Price", $"${item.Price:0}", new(0, y, 0), .004f,
+                new("224b3c"), 28);
             tag.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
             tag.OutlineSize = 5; tag.OutlineModulate = new("f5f1e7");
         }

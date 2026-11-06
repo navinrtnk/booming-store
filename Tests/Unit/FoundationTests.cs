@@ -7,7 +7,7 @@ namespace BoomingStore.Tests;
 public static class Fixtures
 {
     public static StoreItem Item(string kind = "vase", int id = 1, float x = 0, float z = 0) =>
-        new() { Id = id, Kind = kind, X = x, Z = z, Stock = 3, ForSale = true, Price = Catalog.Get(kind).Price };
+        new() { Id = id, Kind = kind, X = x, Z = z, Stock = 1, ForSale = true, Price = Catalog.Get(kind).Price };
     public static StoreState Shop(params StoreItem[] items) => new() { Items = [.. items], Cash = 9000 };
     public static StoreState Enclosed()
     {
@@ -99,10 +99,10 @@ public class TradingTests
     {
         var item = Fixtures.Item(); var state = Fixtures.Shop(item); var trade = new StoreTrading(state);
         Assert.True(trade.TryReserve(1, item));
-        Assert.Equal(9000m, state.Cash); Assert.Equal(3, item.Stock); Assert.Equal(1, trade.Reserved(item));
+        Assert.Equal(9000m, state.Cash); Assert.Equal(1, item.Stock); Assert.Equal(1, trade.Reserved(item));
         item.Price = 99;
         Assert.Equal(38m, trade.Checkout(1)!.Price);
-        Assert.Equal(9038m, state.Cash); Assert.Equal(2, item.Stock);
+        Assert.Equal(9038m, state.Cash); Assert.Equal(0, item.Stock);
         Assert.Equal(38m, state.Revenue); Assert.Equal(18m, state.CostOfSales);
         Assert.Equal(38m, state.DayRevenue); Assert.Equal(18m, state.DayCost);
         Assert.Equal(1, state.Sales); Assert.Equal(1, state.DaySales);
@@ -217,7 +217,7 @@ public class SaveAndHistoryTests
     public void LoadingRepairsAnOutdatedNextObjectId()
     { var restored = StoreState.Parse(Fixtures.Shop(Fixtures.Item(id: 42)).Serialize()); Assert.Equal(43, restored.NextId); }
     [Theory]
-    [InlineData("null")] [InlineData("{\"Schema\":2}")] [InlineData("{\"Cash\":-1}")]
+    [InlineData("null")] [InlineData("{\"Schema\":99}")] [InlineData("{\"Cash\":-1}")]
     [InlineData("{\"Floors\":[]}")] [InlineData("{\"StoreName\":\"\"}")]
     [InlineData("{\"Floors\":null}")]
     public void CorruptOrUnsupportedSaveDataIsRejected(string json) => Assert.Throws<InvalidDataException>(() => StoreState.Parse(json));
@@ -256,8 +256,8 @@ public class SaveAndHistoryTests
         state = history.Undo(state); Assert.Equal(9020m, state.Cash);
         state = history.Undo(state); Assert.Equal(9010m, state.Cash); Assert.False(history.CanUndo);
         state = history.Redo(state); Assert.Equal(9020m, state.Cash);
-        history.Record(state); state.Items[0].Stock = 8; Assert.False(history.CanRedo);
-        state = history.Undo(state); Assert.Equal(3, state.Items[0].Stock);
+        history.Record(state); state.Items[0].Stock = 0; Assert.False(history.CanRedo);
+        state = history.Undo(state); Assert.Equal(1, state.Items[0].Stock);
         history.Clear(); Assert.False(history.CanRedo); Assert.False(history.CanUndo);
     }
     [Fact]

@@ -15,7 +15,10 @@ public partial class StoreGame : Node3D
     public List<Shopper> Shoppers { get; } = [];
     public List<Shopper> Queue { get; } = [];
     public bool Open { get; private set; }
-    public bool Editing => !Open && Shoppers.Count == 0;
+    public bool CanOpen => !Open && Shoppers.Count == 0;
+    public bool Editing => CanOpen && Keeper?.Busy != true;
+    public Shopkeeper Keeper { get; private set; } = null!;
+    public IEnumerable<PersonActor> People => Keeper == null ? Shoppers : Shoppers.Cast<PersonActor>().Append(Keeper.Actor);
     public float Speed { get; private set; } = 1;
     public bool CutWalls { get; private set; } = true;
     public string Tool { get; private set; } = "select";
@@ -29,7 +32,7 @@ public partial class StoreGame : Node3D
     public bool CanUndo => Editing && _history.CanUndo;
     public bool CanRedo => Editing && _history.CanRedo;
     private Node3D _layout = null!, _floors = null!, _walls = null!, _overlay = null!;
-    private Shopper? _cashier;
+    private PersonActor? _cashier;
     private readonly Dictionary<int, Node3D> _objects = [];
     private readonly StoreHistory _history = new();
     private StoreTrading _trading = null!;
@@ -37,7 +40,8 @@ public partial class StoreGame : Node3D
     private StoreItem? _ghost;
     private int _moving, _rotation;
     private Vector3? _wallStart;
-    private float _spawn = 1, _hudTime, _lastYaw;
+    private float _hudTime, _lastYaw;
+    private readonly CustomerArrivals _arrivals = new(() => GD.Randf());
     private int _profile;
     private (Vector3? Point, int Rotation, int Color, int? Selected, string Tool, Vector3? WallStart, bool OverUi)? _previewState;
     private bool _previewValid, _closing, _floorGrid;
@@ -51,18 +55,25 @@ public partial class StoreGame : Node3D
         _walls = Geometry.Group(this, "Walls"); _overlay = Geometry.Group(this, "Placement");
         Camera = new StoreCamera { Current = true }; AddChild(Camera);
 #if DEBUG
-        _automatedChecks = OS.GetCmdlineUserArgs().Contains("--test");
+        _automatedChecks = OS.GetCmdlineUserArgs().Any(arg => arg is "--test" or "--preview-walk" or "--preview-owner");
 #endif
         Seed();
         if (!_automatedChecks && File.Exists(SavePath)) TryLoad(false);
+        if (State.MigratedFromStackedStock) EnsureSupplyCabinet();
+        Rebuild();
+        Keeper = new Shopkeeper(); AddChild(Keeper); Keeper.Build(this);
         Rebuild(); Hud = new StoreHud(); AddChild(Hud); Hud.Build(this);
         SetProcess(true);
 #if DEBUG
-        if (_automatedChecks) CallDeferred(nameof(RunChecks));
+        if (OS.GetCmdlineUserArgs().Contains("--preview-owner")) CallDeferred(nameof(ReviewOwner));
+        else if (OS.GetCmdlineUserArgs().Contains("--preview-walk")) CallDeferred(nameof(ReviewWalking));
+        else if (_automatedChecks) CallDeferred(nameof(RunChecks));
 #endif
     }
 #if DEBUG
     private async void RunChecks() => await FoundationChecks.Run(this);
+    private async void ReviewOwner() => await OwnerPreview.Run(this);
+    private async void ReviewWalking() => await WalkingPreview.Run(this);
 #endif
     private void Seed()
     {
@@ -78,10 +89,11 @@ public partial class StoreGame : Node3D
         {
             var p = Catalog.Get(kind); var support = State.Items.FirstOrDefault(i => i.Id == parent);
             var item = new StoreItem { Id = State.NextId++, Kind = kind, X = x, Z = z, Y = support?.Product.Surface ?? 0,
-                Color = color, Rotation = rotation, ParentId = parent, ForSale = p.Merchandise, Stock = p.Merchandise ? 5 : 1, Price = p.Price };
+                Color = color, Rotation = rotation, ParentId = parent, ForSale = p.Merchandise, Stock = 1, Price = p.Price };
             State.Items.Add(item); return item;
         }
         Add("checkout", -3.6f, -3, 2);
+        Add("stockroom", -5.15f, -3.1f, 2);
         var table = Add("table", 0, .1f);
         Add("vase", -.62f, .1f, 1, parent: table.Id); Add("candle", 0, .1f, parent: table.Id); Add("books", .62f, .1f, 2, parent: table.Id);
         var table2 = Add("table", 2.4f, -2.7f);
@@ -92,6 +104,20 @@ public partial class StoreGame : Node3D
         Add("plant", 4.7f, -3.7f, 1); Add("plant", -4.8f, 3.7f, 0);
         State.Cash = 9000;
     }
+    private void EnsureSupplyCabinet()
+    {
+        if (State.Items.Any(i => i.Kind == "stockroom") || State.Items.Count >= 600) return;
+        foreach (var point in Enumerable.Range(0, 24 * 20).Select(i => ShopNavigation.Point(new(i % 24, i / 24)))
+            .OrderBy(p => p.DistanceSquaredTo(new(-5.15f, 0, -3.1f))))
+        {
+            var item = new StoreItem { Id = State.NextId, Kind = "stockroom", X = point.X, Z = point.Z, Stock = 1, Price = 480, Color = 2 };
+            if (!StoreLayout.CanPlace(State, item)) continue;
+            State.NextId++; State.Items.Add(item); break;
+        }
+    }
+    public void ClearEditHistory() => _history.Clear();
+    public void StockChanged(StoreItem item)
+    { _history.Clear(); Navigation.Rebuild(State); RefreshItem(item); }
     private static void Clear(Node parent)
     { foreach (var child in parent.GetChildren()) { parent.RemoveChild(child); child.QueueFree(); } }
     private void Rebuild()
@@ -139,10 +165,11 @@ public partial class StoreGame : Node3D
         Shoppers.RemoveAll(s => s.Finished);
         if (Open)
         {
-            State.TradingSeconds += dt; _spawn -= dt;
-            if (_spawn <= 0 && Shoppers.Count < 6)
+            State.TradingSeconds += dt;
+            var entranceClear = People.All(s => s.Position.DistanceTo(Navigation.Entrance) > .9f);
+            if (_arrivals.Tick(dt, Shoppers.Count, entranceClear))
             {
-                var s = new Shopper(); AddChild(s); s.Build(this, _profile++); Shoppers.Add(s); _spawn = 8;
+                var s = new Shopper(); AddChild(s); s.Build(this, _profile++); Shoppers.Add(s);
             }
         }
         if (_closing && Shoppers.Count == 0)
@@ -151,6 +178,7 @@ public partial class StoreGame : Node3D
             Save(false); Hud.RefreshInspector();
         }
         if (Mathf.Abs(Mathf.Sin(Camera.Yaw) - Mathf.Sin(_lastYaw)) > .25f || Mathf.Abs(Mathf.Cos(Camera.Yaw) - Mathf.Cos(_lastYaw)) > .25f) RebuildWalls();
+        if (_cashier != null) _cashier.AttentionTarget = Queue.Count > 0 ? Queue[0].Position + Vector3.Up * 1.5f : null;
         UpdateOverlay();
         _hudTime += (float)delta; if (_hudTime > .15f) { Hud.RefreshStats(); _hudTime = 0; }
     }
@@ -165,6 +193,11 @@ public partial class StoreGame : Node3D
                 case Key.Delete: RemoveSelected(); return;
                 case Key.Space: SetSpeed(Speed == 0 ? 1 : 0); return;
                 case Key.Home: Camera.Home(); return;
+                case Key.Key1: Camera.SetView(1); return;
+                case Key.Key2: Camera.SetView(2); return;
+                case Key.Key3: Camera.SetView(3); return;
+                case Key.F: Camera.ToggleFollow(); return;
+                case Key.I or Key.J or Key.K or Key.L: Keeper.MoveFromKey(k.Keycode); return;
                 case Key.F5: Save(); return;
                 case Key.F9: TryLoad(); return;
                 case Key.F12: Capture(); return;
@@ -185,7 +218,12 @@ public partial class StoreGame : Node3D
         if (_placing != null || _moving != 0) { Place(); return; }
         if (Tool == "floor") { PaintFloor(point.Value); return; }
         if (Tool == "erase") { EraseWall(point.Value); return; }
-        Select(Pick(m.Position));
+        var empty = State.Items.Where(i => i.ForSale && i.Stock == 0)
+            .FirstOrDefault(i => Camera.UnprojectPosition(i.Position + Vector3.Up * .05f).DistanceTo(m.Position) < 22);
+        var item = empty ?? Pick(m.Position);
+        if (item is { Stock: 0, ForSale: true }) { Select(null); Keeper.Request(item); return; }
+        if (item != null) Select(item);
+        else { Select(null); Keeper.MoveTo(point.Value); }
     }
     public void Notify(string text, string detail = "") { Status = text; StatusDetail = detail; Hud?.RefreshStats(); }
     public void Rename(string name)
@@ -256,7 +294,7 @@ public partial class StoreGame : Node3D
         if (Camera.OverUi || point == null || !Editing) return;
         if (_placing != null || _moving != 0)
         {
-            _ghost = _moving != 0 ? State.Items.First(i => i.Id == _moving).Copy() : new StoreItem { Kind = _placing!.Id, Color = PaintColor, ForSale = _placing.Merchandise, Stock = _placing.Merchandise ? 3 : 1, Price = _placing.Price };
+            _ghost = _moving != 0 ? State.Items.First(i => i.Id == _moving).Copy() : new StoreItem { Kind = _placing!.Id, Color = PaintColor, ForSale = _placing.Merchandise, Stock = 1, Price = _placing.Price };
             var p = point.Value; _ghost.ParentId = 0; _ghost.Y = 0;
             if (_ghost.Kind is "vase" or "candle" or "books" or "bowl")
                 foreach (var support in State.Items.Where(i => i.Product.Surface > 0 && i.Id != _moving))
@@ -308,20 +346,12 @@ public partial class StoreGame : Node3D
     public void ToggleSale()
     {
         if (!Editing || Selected == null) return;
-        if (Selected.Kind == "checkout" || State.Items.Any(i => i.ParentId == Selected.Id))
+        if (Selected.Kind is "checkout" or "stockroom" || Selected.Stock == 0 || State.Items.Any(i => i.ParentId == Selected.Id))
         { Notify("Keep the checkout and occupied displays as store fixtures."); return; }
         Remember(); Selected.ForSale = !Selected.ForSale; RefreshItem(Selected);
     }
     public void ChangePrice(decimal amount)
     { if (!Editing || Selected == null) return; Remember(); Selected.Price = Math.Clamp(Selected.Price + amount, 1, 99999); RefreshItem(Selected); }
-    public void Restock()
-    {
-        if (!Editing || Selected == null) return;
-        var qty = Math.Min(5, 99 - Selected.Stock); var cost = qty * Selected.Product.Cost;
-        if (qty <= 0) return;
-        if (State.Cash < cost) { Notify("Not enough cash to restock."); return; }
-        Remember(); State.Cash -= cost; Selected.Stock += qty; RefreshItem(Selected); Notify($"Restocked {qty} · ${cost:0}");
-    }
     private List<StoreWall> WallStroke(Vector3 a, Vector3 b)
     {
         var along = Mathf.Abs(a.X - b.X) >= Mathf.Abs(a.Z - b.Z);
@@ -373,14 +403,16 @@ public partial class StoreGame : Node3D
     private void RestoreHistory(bool redo)
     {
         if (redo ? !CanRedo : !CanUndo) return;
+        var keeperPosition = Keeper.Actor.Position;
         State = redo ? _history.Redo(State) : _history.Undo(State);
-        Selected = null; CancelTool(); Rebuild(); Notify(redo ? "Redid last edit" : "Undid last edit");
+        State.KeeperX = keeperPosition.X; State.KeeperZ = keeperPosition.Z;
+        Selected = null; CancelTool(); Rebuild(); Keeper.BindState(); Notify(redo ? "Redid last edit" : "Undid last edit");
     }
     public void ToggleOpen()
     {
         if (Open)
         { Open = false; _closing = true; if (Speed == 0) Speed = 1; Notify("Closing time", "Shoppers will finish their purchases before editing resumes."); return; }
-        if (!Editing) { Notify("Your last shoppers are still finishing up."); return; }
+        if (!CanOpen) { Notify("Your last shoppers are still finishing up."); return; }
         Navigation.Rebuild(State);
         if (!Navigation.HasEntrance) { Notify("Add an accessible doorway or gap in an exterior wall."); return; }
         if (Checkout == null || State.Items.Count(i => i.Kind == "checkout") != 1)
@@ -392,7 +424,7 @@ public partial class StoreGame : Node3D
         if (reachable == 0) { Notify("Stock at least one accessible object marked for sale."); return; }
         CancelTool(); Selected = null; _history.Clear();
         State.Day++; State.DayRevenue = 0; State.DayCost = 0; State.DaySales = 0; State.TradingSeconds = 0;
-        _trading = new(State); Open = true; _spawn = .5f; Speed = 1;
+        _trading = new(State); Open = true; _arrivals.Reset(); Speed = 1;
         Notify($"Day {State.Day} · Open for business", reachable < available.Length ? $"{available.Length - reachable} product(s) cannot be reached. Review the layout after closing." : "Customers are on their way. Prices influence their buying decisions."); Hud.RefreshInspector();
     }
     public int Reserved(StoreItem item) => _trading?.Reserved(item) ?? 0;
@@ -415,14 +447,14 @@ public partial class StoreGame : Node3D
         var receipt = _trading.Checkout(shopper.GetInstanceId());
         if (receipt == null) return false;
         var (item, price) = receipt;
-        RefreshItem(item);
+        StockChanged(item);
         Notify($"Sold {item.Product.Name} · ${price:0}", $"${price - item.Product.Cost:0} gross profit · {item.Stock} left in stock"); Hud.RefreshInspector(); return true;
     }
     public void Save(bool announce = true)
     {
         try
         {
-            StorePersistence.Save(SavePath, State);
+            Keeper?.SyncPosition(); StorePersistence.Save(SavePath, State);
             if (announce) Notify("Store saved", "Layout, stock and settled finances saved. Loading starts with the doors closed.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Notify("Couldn't save the store", ex.Message); }
@@ -443,7 +475,7 @@ public partial class StoreGame : Node3D
     {
         foreach (var s in Shoppers) s.QueueFree(); Shoppers.Clear(); Queue.Clear();
         State = loaded; _trading = new(State); Open = false; _closing = false; Speed = 1; Selected = null; _history.Clear();
-        if (Hud != null) { CancelTool(); Rebuild(); }
+        if (Hud != null) { if (State.MigratedFromStackedStock) EnsureSupplyCabinet(); CancelTool(); Rebuild(); Keeper.BindState(); }
     }
     private StoreItem? Pick(Vector2 screen)
     {
@@ -452,7 +484,8 @@ public partial class StoreGame : Node3D
         foreach (var i in State.Items)
         {
             var height = i.Kind switch { "shelf" => 2.2f, "lamp" or "plant" => 1.8f, "chair" => 1.1f, "vase" => .53f, "rug" => .03f, "books" or "candle" or "bowl" => .23f, _ => i.Product.Surface > 0 ? i.Product.Surface : 1.1f };
-            var size = i.Footprint;
+            if (i.Stock == 0) height = .12f;
+            var size = i.Footprint + (i.Stock == 0 ? Vector2.One * .12f : Vector2.Zero);
             var min = i.Position - new Vector3(size.X / 2, 0, size.Y / 2); var max = min + new Vector3(size.X, height, size.Y);
             float near = 0, far = 1000;
             for (var axis = 0; axis < 3; axis++)
