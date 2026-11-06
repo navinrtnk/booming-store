@@ -10,6 +10,34 @@ public class RestockTests
     { var item = Fixtures.Item(id: id); item.Stock = 0; return item; }
 
     [Fact]
+    public void TheNewestCommandAndAutomaticCheckoutPreferenceSurviveSaving()
+    {
+        var state = Fixtures.Shop(Empty()); state.NextId = 2; state.AutoCheckout = false;
+        state.NextKeeperCommand = new(KeeperCommandKind.Walk, 2.1f, 3.2f);
+        var loaded = StoreState.Parse(state.Serialize());
+        Assert.Equal(state.Serialize(), loaded.Serialize()); Assert.False(loaded.AutoCheckout);
+        Assert.Equal(new Vector3(2.1f, 0, 3.2f), loaded.NextKeeperCommand!.Position);
+        state.NextKeeperCommand = new(KeeperCommandKind.Restock, ItemId: 1);
+        Assert.Equal(1, StoreState.Parse(state.Serialize()).NextKeeperCommand!.ItemId);
+    }
+
+    [Theory]
+    [InlineData("kind")] [InlineData("outside")] [InlineData("missing-item")] [InlineData("stocked-item")]
+    public void InvalidNextCommandsAreRejected(string invalid)
+    {
+        var item = Empty(); var state = Fixtures.Shop(item);
+        state.NextKeeperCommand = invalid switch
+        {
+            "kind" => new((KeeperCommandKind)99),
+            "outside" => new(KeeperCommandKind.Walk, 9, 0),
+            "missing-item" => new(KeeperCommandKind.Restock, ItemId: 2),
+            _ => new(KeeperCommandKind.Restock, ItemId: 1)
+        };
+        if (invalid == "stocked-item") item.Stock = 1;
+        Assert.Throws<InvalidDataException>(() => StoreState.Parse(state.Serialize()));
+    }
+
+    [Fact]
     public void ReplacementIsPaidAtCollectionAndDeliveredOnlyOnce()
     {
         var item = Empty(); var state = Fixtures.Shop(item); var orders = new RestockOrders(state);

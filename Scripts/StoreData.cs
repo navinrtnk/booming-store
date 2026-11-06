@@ -23,7 +23,7 @@ public static class Catalog
         new("plinth", "Stone plinth", "Displays", "Give a special piece room to stand out.", .8f, .8f, 95, 195, false, .95f),
         new("rug", "Woven wool rug", "Decor", "A soft foundation; furniture may sit above it.", 3, 2, 120, 250, false),
         new("stockroom", "Supply cabinet", "Displays", "Collect one replacement here before carrying it to an empty spot.", 1, .7f, 240, 480, false),
-        new("checkout", "Checkout counter", "Displays", "A staffed checkout. Keep the customer side clear.", 1.8f, .9f, 420, 750, false)
+        new("checkout", "Checkout counter", "Displays", "Your shopkeeper serves here. Keep both sides of the counter accessible.", 1.8f, .9f, 420, 750, false)
     ];
     private static readonly Dictionary<string, Product> ById = Products.ToDictionary(p => p.Id, StringComparer.Ordinal);
     public static Product Get(string id) => ById[id];
@@ -81,10 +81,12 @@ public sealed class StoreState
     public int Day { get; set; }
     public double TradingSeconds { get; set; }
     public int NextId { get; set; } = 1;
-    public float KeeperX { get; set; } = -2;
-    public float KeeperZ { get; set; } = 2;
+    public float KeeperX { get; set; } = -3.6f;
+    public float KeeperZ { get; set; } = -3.95f;
     public List<int> RestockQueue { get; set; } = [];
     public int CarriedItemId { get; set; }
+    public bool AutoCheckout { get; set; } = true;
+    public KeeperCommand? NextKeeperCommand { get; set; }
     public static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions CompactJson = new();
     public string Serialize(bool indented = true) => JsonSerializer.Serialize(this, indented ? Json : CompactJson);
@@ -116,6 +118,10 @@ public sealed class StoreState
             s.RestockQueue.Any(id => !byId.TryGetValue(id, out var item) || item.Stock != 0 || !item.ForSale) ||
             s.CarriedItemId != 0 && (s.RestockQueue.Count == 0 || s.RestockQueue[0] != s.CarriedItemId))
             throw new InvalidDataException("Invalid shopkeeper or restocking state.");
+        if (s.NextKeeperCommand is { } next && (!Enum.IsDefined(next.Kind) || !next.Position.IsFinite() ||
+            Math.Abs(next.X) >= 6 || Math.Abs(next.Z) >= 5 || next.Kind == KeeperCommandKind.Restock &&
+            (!byId.TryGetValue(next.ItemId, out var nextItem) || nextItem.Stock != 0 || !nextItem.ForSale)))
+            throw new InvalidDataException("Invalid next shopkeeper command.");
         if (s.Schema == 1)
         {
             foreach (var item in s.Items)

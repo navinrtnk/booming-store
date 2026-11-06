@@ -20,7 +20,9 @@ public static class FoundationChecks
             GD.Seed(42);
             Check(game.Editing && !game.Open, "Starter shop must be closed and editable.");
             Check(game.State.Items.Count == 17, "Starter collection is incomplete.");
-            Check(game.FindChildren("*", "Skeleton3D", true, false).Count > 0, "Cashier rig did not load.");
+            Check(game.FindChildren("*", "Skeleton3D", true, false).Count == 1, "The shop must contain only its playable shopkeeper before customers arrive.");
+            Check(game.Keeper.Actor.IsShopkeeper && game.Keeper.Actor.FindChild("FlowingHair", true, false) is MeshInstance3D hair && hair.Mesh is ArrayMesh hairMesh && hairMesh.GetBlendShapeCount() == 3,
+                "The cashier-based shopkeeper or her flowing hair did not load.");
             var vase = game.State.Items.First(i => i.Kind == "vase"); var id = vase.Id;
             game.Select(vase); game.ChangePrice(5);
             Check(game.State.Items.Single(i => i.Id == id).Price == 43, "Price edit failed.");
@@ -28,8 +30,19 @@ public static class FoundationChecks
             game.Redo(); Check(game.State.Items.Single(i => i.Id == id).Price == 43, "Redo did not restore price."); game.Undo();
             vase = game.State.Items.Single(i => i.Id == id); game.Select(vase);
             Check(game.State.Items.All(i => i.Stock == 1), "Every visible object must represent one item.");
-            game.Keeper.MoveTo(new(-1.5f, 0, 2.8f)); game.SetSpeed(3);
-            for (var frame = 0; frame < 300 && game.Keeper.Actor.IsWalking; frame++) await Frame();
+            game.Keeper.MoveTo(new(-1.5f, 0, 2.8f));
+            var redirectedWalk = new Vector3(-1.35f, 0, 2.85f); game.Keeper.MoveTo(redirectedWalk);
+            Check(game.Keeper.Actor.Destination == redirectedWalk && game.Keeper.Next == null, "A new walking command did not redirect the current route immediately.");
+            game.SetSpeed(3);
+            var diagonalMovement = false; var lastKeeperPosition = game.Keeper.Actor.Position;
+            for (var frame = 0; frame < 300 && game.Keeper.Actor.IsWalking; frame++)
+            {
+                await Frame(); var now = game.Keeper.Actor.Position; var step = now - lastKeeperPosition;
+                diagonalMovement |= Math.Abs(step.X) > .0001f && Math.Abs(step.Z) > .0001f;
+                if (!game.Navigation.IsSegmentClear(lastKeeperPosition, now)) throw new InvalidOperationException("Shopkeeper crossed an obstacle while following her route.");
+                lastKeeperPosition = now;
+            }
+            Check(diagonalMovement, "The main character still follows only horizontal and vertical steps.");
             Check(game.Keeper.Actor.Position.Z > 2.5f, "The main character did not walk to the requested floor location.");
             game._UnhandledInput(new InputEventKey { Keycode = Key.Key2, Pressed = true });
             Check(game.Camera.Distance < 10 && game.Camera.Pitch < .5f, "Keyboard close camera view failed.");
@@ -61,6 +74,8 @@ public static class FoundationChecks
             var initialCash = game.State.Cash;
             var initialStock = game.State.Items.ToDictionary(i => i.Id, i => i.Stock);
             game.ToggleOpen(); Check(game.Open && !game.Editing, "Starter shop did not open.");
+            game.Keeper.Cancel(); // Let a real line form before testing task priority.
+
             game.Select(game.State.Items.Single(i => i.Id == id));
             var before = game.State.Serialize(); game.Rotate();
             Check(game.State.Serialize() == before, "Editing changed inventory or layout while trading.");
@@ -70,15 +85,41 @@ public static class FoundationChecks
             var maximumGuests = 0;
             var browsingStarted = new Dictionary<Shopper, double>();
             var shortestBrowse = double.PositiveInfinity;
+            var testedServiceInterruption = false; var requestedCheckout = false; var previousSales = game.State.Sales;
             for (var frame = 0; frame < 6000 && game.State.Sales < 3; frame++)
             {
                 await Frame(); maximumGuests = Math.Max(maximumGuests, game.Shoppers.Count);
+                if (game.State.Sales > previousSales)
+                {
+                    Check(game.Keeper.IsAtRegister, "A customer paid without the main character at the checkout.");
+                    previousSales = game.State.Sales;
+                }
+                if (!requestedCheckout && game.Queue.Count >= 2)
+                { Check(game.Keeper.ServeCheckout(), "Could not send the shopkeeper to checkout."); requestedCheckout = true; }
+                if (!testedServiceInterruption && game.Shoppers.Any(s => s.State == Shopper.Activity.Paying))
+                {
+                    testedServiceInterruption = true; var cashBeforeCommand = game.State.Cash; var salesBeforeCommand = game.State.Sales;
+                    var currentCustomer = game.Queue[0]; var agreedPrice = currentCustomer.Choice!.Price;
+                    var newest = new Vector3(4.25f, 0, 3.4f);
+                    Check(game.Keeper.MoveTo(new(4.9f, 0, 3.8f)) && game.Keeper.MoveTo(newest), "Could not queue the cashier's next walking command.");
+                    Check(game.Keeper.Next?.Position == newest && !game.Keeper.Actor.IsWalking && game.Keeper.CanServe(currentCustomer),
+                        "The command interrupted payment or failed to replace the previous next command.");
+                    for (var away = 0; away < 120; away++) await Frame();
+                    Check(game.State.Cash == cashBeforeCommand + agreedPrice && game.State.Sales == salesBeforeCommand + 1,
+                        "She must finish exactly the current customer before following the next command.");
+                    Check(game.Queue.Count > 0 && !game.Shoppers.Any(s => s.State == Shopper.Activity.Paying) && game.Keeper.Actor.Destination == newest,
+                        "She served another lined-up customer before following the newest command.");
+                    previousSales = game.State.Sales;
+                }
                 foreach (var shopper in game.Shoppers)
                 {
                     if (shopper.State == Shopper.Activity.Browsing) browsingStarted.TryAdd(shopper, game.State.TradingSeconds);
                     else if (browsingStarted.Remove(shopper, out var started)) shortestBrowse = Math.Min(shortestBrowse, game.State.TradingSeconds - started);
                 }
             }
+            Check(testedServiceInterruption, "No live checkout was available to test the shopkeeper leaving the register.");
+            Check(game.FindChildren("*", "Skeleton3D", true, false).Count == game.Shoppers.Count + 1,
+                "An extra cashier or shopkeeper was spawned.");
             Check(maximumGuests <= CustomerArrivals.Capacity, "Shop exceeded its quieter customer limit.");
             Check(double.IsFinite(shortestBrowse) && shortestBrowse >= 7.9, "Customers did not linger at displays.");
             Check(game.State.Sales >= 3, "Live shoppers failed to complete three purchases before timeout.");
@@ -113,13 +154,22 @@ public static class FoundationChecks
             Check(game.State.CarriedItemId == emptyId && empty.Stock == 0, "She did not collect and carry one replacement.");
             Check(game.Keeper.Actor.Position.DistanceTo(start) > 1, "Restocking did not require physical travel.");
             Check(game.State.Cash == cashBeforeRestock - empty.Product.Cost, "The replacement was not charged exactly once.");
+            var afterDelivery = new Vector3(1.8f, 0, 3.45f);
+            game.Keeper.MoveTo(new(1.4f, 0, 3.4f)); game.Keeper.MoveTo(afterDelivery);
+            Check(game.Keeper.Next?.Position == afterDelivery && game.Keeper.Actor.CarryingStock,
+                "A new command must wait for the current delivery and replace any older next command.");
             game.Save(false); game.TryLoad(false);
+            Check(game.Keeper.Next?.Position == afterDelivery, "Loading lost the newest command waiting behind a delivery.");
             Check(game.State.CarriedItemId == emptyId, "Loading lost the item already being carried.");
             for (var frame = 0; frame < 3600 && game.State.Items.Single(i => i.Id == emptyId).Stock == 0; frame++) await Frame();
             var restocked = game.State.Items.Single(i => i.Id == emptyId);
             Check(restocked.Stock == 1 && !game.Keeper.Busy, "The main character failed to finish stocking one item.");
             Check(game.State.Cash == cashBeforeRestock - restocked.Product.Cost, "Loading charged for the carried replacement twice.");
             Check(game.Keeper.Actor.Position.DistanceTo(restocked.Position) < 1.8f, "Restocking completed without reaching the display.");
+            Check(game.Keeper.Actor.Destination == afterDelivery && game.Keeper.Next == null, "The next command did not start immediately after delivery.");
+            for (var frame = 0; frame < 900 && game.Keeper.Actor.IsWalking; frame++) await Frame();
+            Check(game.Keeper.Actor.Position.DistanceTo(afterDelivery) < .02f,
+                $"The shopkeeper did not finish the newest walking command: {game.Keeper.Actor.Position}, destination {game.Keeper.Actor.Destination}, failed {game.Keeper.Actor.RouteFailed}.");
             var floorEmpty = game.State.Items.First(i => i.ForSale && i.Stock == 0 && i.Y == 0);
             game.Camera.ZoomTo(floorEmpty.Position);
             var edge = floorEmpty.Position + new Vector3(floorEmpty.Footprint.X * .42f, .05f, floorEmpty.Footprint.Y * .42f);

@@ -130,7 +130,7 @@ public class ShopperMotionTests
     {
         var state = Fixtures.Shop(); state.Walls.Add(new() { X = 0, Z = 0, AlongX = true });
         var navigation = new ShopNavigation(); navigation.Rebuild(state);
-        Assert.False(navigation.CanStep(new(.25f, 0, -.1f), new(.25f, 0, .1f)));
-        Assert.True(navigation.CanStep(new(.25f, 0, -.1f), new(.4f, 0, -.1f)));
+        Assert.False(navigation.CanStep(new(.25f, 0, -.3f), new(.25f, 0, .3f)));
+        Assert.True(navigation.CanStep(new(.25f, 0, -.3f), new(.4f, 0, -.3f)));
     }
 }

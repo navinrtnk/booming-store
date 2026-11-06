@@ -8,7 +8,7 @@ public partial class PersonActor : Node3D
 {
     protected StoreGame _game = null!;
     public bool Finished { get; protected set; }
-    public bool Staff { get; private set; }
+    public bool IsShopkeeper { get; private set; }
     public bool IsWalking => _path.Count > 0;
     public bool RouteFailed { get; private set; }
     public Vector3? Destination => _destination;
@@ -19,6 +19,8 @@ public partial class PersonActor : Node3D
     protected bool _bought;
     private Skeleton3D _rig = null!;
     private Node3D _visual = null!, _bag = null!, _cargo = null!;
+    private MeshInstance3D? _flowingHair;
+    private float _previousYaw, _hairSway;
     private Label3D _thought = null!, _cargoText = null!;
     private readonly Queue<Vector3> _path = new();
     private readonly Dictionary<string, int> _bones = [];
@@ -33,12 +35,13 @@ public partial class PersonActor : Node3D
     private sealed record ArmRig(int Upper, int Lower, int Wrist, Vector3 Shoulder, Vector3 Elbow, Vector3 Hand);
     private static readonly string[] Models = ["gentleman_a", "woman_a", "gentleman_b", "woman_b", "woman_c"];
     private static readonly PackedScene[] Scenes = Models.Select(m => GD.Load<PackedScene>($"res://Assets/Customer/Avatars/{m}.glb")).ToArray();
-    public void Build(StoreGame game, int profile, bool staff = false)
+    public void Build(StoreGame game, int profile, bool shopkeeper = false)
     {
-        _game = game; Staff = staff; _personality = profile;
+        _game = game; IsShopkeeper = shopkeeper; _personality = profile;
         _walkSpeed = .78f + profile % 5 * .025f;
         _clock = profile * 1.73f;
-        _visual = Scenes[profile % Scenes.Length].Instantiate<Node3D>(); AddChild(_visual);
+        _visual = (shopkeeper ? GD.Load<PackedScene>("res://Assets/Customer/Avatars/shopkeeper.glb") : Scenes[profile % Scenes.Length]).Instantiate<Node3D>(); AddChild(_visual);
+        _flowingHair = _visual.FindChild("FlowingHair", true, false) as MeshInstance3D;
         _rig = _visual.FindChildren("*", "Skeleton3D", true, false).OfType<Skeleton3D>().Single();
         for (var i = 0; i < _rig.GetBoneCount(); i++) _bones[_rig.GetBoneName(i)] = i;
         _leftLeg = MakeLeg("L"); _rightLeg = MakeLeg("R");
@@ -57,7 +60,7 @@ public partial class PersonActor : Node3D
                 if (mesh.Mesh.SurfaceGetMaterial(i) is not StandardMaterial3D source) continue;
                 var m = (StandardMaterial3D)source.Duplicate();
                 m.TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic;
-                if (mesh.Name == "Clothing") m.AlbedoColor = new Color(staff ? "aab8ad" : Catalog.Colors[(profile + 1) % 6]);
+                if (mesh.Name == "Clothing") m.AlbedoColor = new Color(shopkeeper ? "a0b79c" : Catalog.Colors[(profile + 1) % 6]);
                 if (mesh.Name == "Skin") { m.Roughness = .58f; m.SubsurfScatterEnabled = RenderingServer.GetCurrentRenderingMethod() == "forward_plus"; m.SubsurfScatterStrength = .08f; m.SubsurfScatterSkinMode = true; }
                 if (mesh.Name == "Eyes") m.Roughness = .18f;
                 mesh.SetSurfaceOverrideMaterial(i, m);
@@ -67,7 +70,8 @@ public partial class PersonActor : Node3D
         {
             var bone = _bones["foot_" + side];
             var attach = new BoneAttachment3D { BoneIdx = bone }; _rig.AddChild(attach);
-            Geometry.RoundedBox(attach, "Shoe", new(.11f, .08f, .25f), new(0, -.035f, .065f), StoreVisuals.Mat("343431"), .025f);
+            Geometry.RoundedBox(attach, "Shoe", shopkeeper ? new(.10f, .055f, .225f) : new(.11f, .08f, .25f),
+                new(0, -.035f, .065f), StoreVisuals.Mat(shopkeeper ? "785d49" : "343431"), .025f);
         }
         var hand = new BoneAttachment3D { BoneIdx = _bones["wrist_L"] }; _rig.AddChild(hand);
         _bag = Geometry.Group(hand, "ShoppingBag", new(0, -.22f, .01f));
@@ -77,11 +81,8 @@ public partial class PersonActor : Node3D
         _thought = Geometry.Text(this, "Thought", "", new(0, 2.02f, 0), .0035f, new("204b3c"), 28);
         _thought.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
         _thought.OutlineSize = 6; _thought.OutlineModulate = new("fff7e8");
-        if (!staff)
-        {
-            Position = _game.Navigation.Entrance; _routePosition = Position;
-            Rotation = new(0, Mathf.Atan2(-Position.X, -Position.Z), 0);
-        }
+        Position = _game.Navigation.Entrance; _routePosition = Position;
+        Rotation = new(0, Mathf.Atan2(-Position.X, -Position.Z), 0); _previousYaw = Rotation.Y;
         _leftArm = MakeArm("L"); _rightArm = MakeArm("R");
         foreach (var (name, bone) in _bones)
         {
@@ -108,7 +109,7 @@ public partial class PersonActor : Node3D
     protected float StepPerson(float dt)
     {
         _clock += dt;
-        if (Staff || dt <= 0) return 0;
+        if (dt <= 0) return 0;
         if (IsWalking && _routeRevision != _game.Navigation.Revision && _destination is { } goal) WalkTo(goal);
         var previous = Position;
         if (IsWalking) Move(dt);
@@ -186,7 +187,9 @@ public partial class PersonActor : Node3D
         lane *= Mathf.Clamp(_remainingDistance / .7f, 0, 1);
         _laneOffset = _laneOffset.Lerp(lane, 1 - Mathf.Exp(-5 * dt));
         var candidate = _routePosition + _laneOffset;
-        Position = _game.Navigation.CanStep(_routePosition, candidate) ? candidate : _routePosition;
+        if (_game.Navigation.CanStep(Position, candidate)) Position = candidate;
+        else if (_game.Navigation.CanStep(Position, _routePosition)) { Position = _routePosition; _laneOffset = Vector3.Zero; }
+        else if (_destination is { } goal) { WalkTo(goal); _moveSpeed = 0; }
         Rotation = new(0, Mathf.LerpAngle(Rotation.Y, heading, 1 - Mathf.Exp(-4 * dt)), 0);
     }
     public bool WalkTo(Vector3 target)
@@ -196,8 +199,11 @@ public partial class PersonActor : Node3D
         if (path.Count == 0 && Position.DistanceTo(target) > .01f) path.Add(target);
         _routePosition = Position; _laneOffset = Vector3.Zero; _remainingDistance = 0; _destination = target;
         var previous = Position;
-        foreach (var point in ShopperMotion.RoundCorners(Position, path))
-        { _path.Enqueue(point); _remainingDistance += previous.DistanceTo(point); previous = point; }
+        foreach (var point in ShopperMotion.RoundCorners(Position, path, _game.Navigation.IsSegmentClear))
+        {
+            if (previous.DistanceTo(point) < .001f) continue;
+            _path.Enqueue(point); _remainingDistance += previous.DistanceTo(point); previous = point;
+        }
         return true;
     }
     public void Face(Vector3 point, float dt)
@@ -226,6 +232,15 @@ public partial class PersonActor : Node3D
         var phase = _travel / (ShopperMotion.StrideLength * _strideScale) * Mathf.Tau;
         var stride = Mathf.Sin(phase) * _walk;
         var idle = PersonPose.Relaxed(_clock, _personality);
+        if (_flowingHair != null && dt > 0)
+        {
+            var turn = Mathf.AngleDifference(_previousYaw, Rotation.Y) / dt; _previousYaw = Rotation.Y;
+            var drift = Mathf.Sin(_clock * 1.3f) * .10f + Mathf.Sin(phase) * _walk * .30f - turn * .18f;
+            _hairSway = Mathf.Lerp(_hairSway, Mathf.Clamp(drift, -.8f, .8f), 1 - Mathf.Exp(-5 * dt));
+            _flowingHair.SetBlendShapeValue(0, Mathf.Max(0, _hairSway));
+            _flowingHair.SetBlendShapeValue(1, Mathf.Max(0, -_hairSway));
+            _flowingHair.SetBlendShapeValue(2, _walk * .25f + Mathf.Abs(_hairSway) * .18f);
+        }
         _carryBlend = Mathf.Lerp(_carryBlend, CarryingStock ? 1 : 0, 1 - Mathf.Exp(-5 * dt));
         var body = ShopperMotion.BodyOffset(_travel, _walk, _strideScale) + idle.Body * (1 - _walk);
         if (ReachTarget is { } low && low.Y < .6f) body.Y -= GestureAmount * .09f;
@@ -250,7 +265,7 @@ public partial class PersonActor : Node3D
         {
             var q = Quaternion.Identity;
             foreach (var (name, value) in expressions)
-                q *= Quaternion.Identity.Slerp(value, name switch { "BlinkL" or "BlinkR" => amount, "Smile" => _bought ? .35f : idle.Smile, _ => 0 });
+                q *= Quaternion.Identity.Slerp(value, name switch { "BlinkL" or "BlinkR" => amount, "Smile" => _bought ? .35f : IsShopkeeper ? .27f + idle.Smile * .25f : idle.Smile, _ => 0 });
             _rig.SetBonePoseRotation(bone, q.Normalized());
         }
         _bag.Visible = _bought && !CarryingStock;

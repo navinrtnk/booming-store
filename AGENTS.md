@@ -1,5 +1,6 @@
 # Project preferences
 
+- Keep commit messages short and lowercase.
 - The user controls commits and publishing. Do not commit, push, stage changes, or create a remote repository unless explicitly requested. The local repository and intended origin are already configured.
 - Godot 4.7.2 .NET, C#, .NET 8. Keep nullable checking and warnings as errors. Use metres for world geometry. Keep financial amounts in decimal and settled store data separate from transient shoppers.
 - Keep code readable, split by responsibility, and avoid unnecessary frameworks. Preserve graphics, gameplay and controls when optimizing.

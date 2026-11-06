@@ -15,7 +15,9 @@ public static class OwnerPreview
             await game.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             game.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(folder, name + ".png"));
         }
-        GD.Seed(42); game.Camera.ZoomTo(game.Keeper.Actor.Position);
+        GD.Seed(42); game.SetSpeed(3); game.Keeper.MoveTo(new(-1.4f, 0, 2.5f));
+        for (var i = 0; i < 400 && game.Keeper.Actor.IsWalking; i++) await Frame();
+        game.SetSpeed(1); game.Camera.ZoomTo(game.Keeper.Actor.Position);
         for (var i = 0; i < 60; i++) await Frame();
         await Capture("relaxed-owner");
         game.ToggleOpen(); game.SetSpeed(3);
@@ -33,7 +35,7 @@ public static class OwnerPreview
             if (game.Keeper.Status == "Placing one item" && ++placingFrames == 10) await Capture("placing-one-item");
         }
         game.SetSpeed(1); game.Camera.Home(); await Frame(); await Capture("store-overview");
-        GD.Print($"OWNER_PREVIEW stock={target.Stock} frames={frame} carrying={carryingFrame}");
+        GD.Print($"OWNER_PREVIEW stock={target.Stock} frames={frame} carrying={carryingFrame} status={game.Status}");
         if (!OS.GetCmdlineUserArgs().Contains("--keep-review-open")) game.GetTree().Quit(target.Stock == 1 ? 0 : 1);
     }
 }

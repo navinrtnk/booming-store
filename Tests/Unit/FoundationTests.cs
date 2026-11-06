@@ -172,17 +172,18 @@ public class NavigationTests
         state.Walls[6].Kind = "door"; nav.Rebuild(state); Assert.NotNull(nav.Path(a, b));
     }
     [Fact]
-    public void PathsAvoidFurnitureAndOnlyStepBetweenAdjacentCells()
+    public void PathsAvoidFurnitureWithShortClearDiagonalSegments()
     {
         var state = Fixtures.Shop(Fixtures.Item("table")); var nav = new ShopNavigation(); nav.Rebuild(state);
         var start = new Vector3(0, 0, -3); var path = nav.Path(start, new(0, 0, 3)); Assert.NotNull(path);
-        var previous = ShopNavigation.Point(ShopNavigation.Cell(start));
+        var previous = start; var length = 0f;
         foreach (var point in path)
         {
-            Assert.InRange(previous.DistanceTo(point), .4999f, .5001f);
-            Assert.True(Math.Abs(point.X) >= 1.16f || Math.Abs(point.Z) >= .66f);
-            previous = point;
+            Assert.True(nav.IsSegmentClear(previous, point));
+            length += previous.DistanceTo(point); previous = point;
         }
+        Assert.Equal(new Vector3(0, 0, 3), path[^1]);
+        Assert.InRange(length, 6.4f, 7.2f); Assert.InRange(path.Count, 2, 4);
         Assert.Null(nav.Path(start, Vector3.Zero));
     }
     [Fact]

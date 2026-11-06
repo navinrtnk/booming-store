@@ -57,7 +57,7 @@ public partial class StoreHud : CanvasLayer
         _keeperStatus = Label("Shopkeeper ready", 12); keeperBox.AddChild(_keeperStatus);
         var keeperActions = new HBoxContainer(); keeperBox.AddChild(keeperActions);
         keeperActions.AddChild(Button("Follow F", game.Camera.ToggleFollow));
-        keeperActions.AddChild(Button("Cancel", game.Keeper.Cancel, "Cancel movement or restocking; undelivered stock is refunded"));
+        keeperActions.AddChild(Button("Stop", game.Keeper.Cancel, "Finish the current customer or delivery, then stop. C resumes checkout."));
         var message = Panel(300, -185, -300, -127, true, false, true);
         var status = new VBoxContainer(); message.AddChild(status); _status = Label("", 15); _detail = Label("", 12, Muted); status.AddChild(_status); status.AddChild(_detail);
         var bottom = Panel(24, -114, -24, -43, true, false, true);
@@ -74,7 +74,7 @@ public partial class StoreHud : CanvasLayer
         tools.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         foreach (var (text, speed) in new[] { ("Ⅱ", 0f), ("1×", 1f), ("3×", 3f) })
         { var value = speed; var b = Button(text, () => game.SetSpeed(value)); tools.AddChild(b); _speed.Add(b); }
-        var footer = Label("Floor: walk · Empty spot: stock · IJKL: move · Arrows: camera · 1/2/3: views · F: follow · WASD: pan · +/−: zoom · Space: pause", 12, new("35493c"));
+        var footer = Label("Floor: walk · Empty spot: stock · IJKL: move · Arrows: camera · 1/2/3: views · F: follow · C: checkout · WASD: pan · +/−: zoom · Space: pause", 12, new("35493c"));
         footer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomWide); footer.OffsetTop = -32; footer.OffsetBottom = -10; footer.HorizontalAlignment = HorizontalAlignment.Center; _root.AddChild(footer);
         RefreshCatalog(); RefreshInspector(); RefreshStats();
     }
@@ -155,7 +155,7 @@ public partial class StoreHud : CanvasLayer
             _inspector.AddChild(new HSeparator());
             _inspector.AddChild(Label("01  Your shopkeeper", 16)); _inspector.AddChild(Wrap("Click clear floor space to walk, or use I/J/K/L. Press F to follow her and 1/2/3 for different views.", 13));
             _inspector.AddChild(Label("02  Curate a collection", 16)); _inspector.AddChild(Wrap("Each visible object is one item. When it sells, click its empty outline to send her for one replacement.", 13));
-            _inspector.AddChild(Label("03  Open the doors", 16)); _inspector.AddChild(Wrap("The checkout is staffed automatically. Restock while open; close when you want to redesign.", 13));
+            _inspector.AddChild(Label("03  Open the doors", 16)); _inspector.AddChild(Wrap("She runs the checkout too. Customers wait while she restocks; she returns to serve when her tasks are done.", 13));
             _inspector.AddChild(new HSeparator());
             var nameField = new LineEdit { Text = _game.State.StoreName, PlaceholderText = "Your store name", MaxLength = 32, Editable = _game.Editing };
             nameField.AddThemeFontSizeOverride("font_size", 15); _inspector.AddChild(nameField);
@@ -179,7 +179,8 @@ public partial class StoreHud : CanvasLayer
         row.AddChild(EditButton("Move", _game.MoveSelected)); row.AddChild(EditButton("Rotate", _game.Rotate)); row.AddChild(EditButton("Copy", _game.DuplicateSelected));
         if (item.Kind is "checkout" or "stockroom")
         {
-            _inspector.AddChild(Wrap(item.Kind == "checkout" ? "Automatically staffed. Keep a clear path to its front side." : "Your shopkeeper collects one replacement here before carrying it to an empty spot.", 13));
+            _inspector.AddChild(Wrap(item.Kind == "checkout" ? "Your shopkeeper serves here. Keep both the customer side and her route behind it clear." : "Your shopkeeper collects one replacement here before carrying it to an empty spot.", 13));
+            if (item.Kind == "checkout") _inspector.AddChild(Button("Work at checkout · C", () => _game.Keeper.ServeCheckout()));
             _inspector.AddChild(EditButton("Remove fixture", _game.RemoveSelected));
             _inspector.AddChild(Button("Look closer", () => _game.Camera.ZoomTo(item.Position))); return;
         }
@@ -210,7 +211,7 @@ public partial class StoreHud : CanvasLayer
     public void RefreshStats()
     {
         if (_cash == null) return;
-        _keeperStatus.Text = _game.Keeper.Status;
+        _keeperStatus.Text = _game.Keeper.Status; _keeperStatus.TooltipText = _game.Keeper.Status;
         _cash.Text = $"${_game.State.Cash:N0}"; _revenue.Text = $"${_game.State.DayRevenue:N0}";
         _day.Text = _game.Open ? $"{_game.State.Day:00}  /  {9 + (int)(_game.State.TradingSeconds / 30) % 12:00}:{(int)(_game.State.TradingSeconds * 2) % 60:00}" : $"{Math.Max(1, _game.State.Day):00}  /  CLOSED";
         _open.Text = _game.Open ? "Close store" : _game.CanOpen ? "Open store  →" : "Finishing up…"; _open.Disabled = !_game.Open && !_game.CanOpen;

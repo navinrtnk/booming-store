@@ -12,9 +12,9 @@ public partial class Shopper : PersonActor
     private int _browseGoal;
     private readonly HashSet<int> _viewed = [];
     private string SayText { set => Say(value); }
-    public new void Build(StoreGame game, int profile, bool staff = false)
+    public new void Build(StoreGame game, int profile, bool shopkeeper = false)
     {
-        base.Build(game, profile, staff);
+        base.Build(game, profile, shopkeeper);
         _browseGoal = 1 + (int)(GD.Randf() * 3);
         State = Activity.Arriving; _timer = Between(2.5f, 4.5f);
     }
@@ -43,9 +43,11 @@ public partial class Shopper : PersonActor
                     var index = _game.Queue.IndexOf(this);
                     var spot = _game.QueueSpot(Math.Max(0, index));
                     if (Position.DistanceTo(spot) > .2f) WalkTo(spot);
-                    else if (index == 0) { State = Activity.Paying; _timer = Between(3.5f, 5.5f); SayText = "Checking out"; }
+                    else if (index == 0 && _game.Keeper.CanServe(this)) { State = Activity.Paying; _timer = Between(3.5f, 5.5f); SayText = "Checking out"; }
+                    else if (index == 0) SayText = "Waiting for you";
                     break;
                 case Activity.Paying:
+                    if (!_game.Keeper.CanServe(this)) { State = Activity.Queueing; SayText = "Waiting for you"; break; }
                     Face(_game.Checkout!.Position, dt);
                     if (_timer <= 0)
                     {

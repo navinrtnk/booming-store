@@ -68,8 +68,8 @@ public static class ShopperMotion
         return new(upper, (upper.Inverse() * lower).Normalized(), (lower.Inverse() * foot).Normalized());
     }
 
-    /// <summary>Round turns inside the waypoint's own clear cell; retain straight corridor segments.</summary>
-    public static List<Vector3> RoundCorners(Vector3 start, IReadOnlyList<Vector3> path)
+    /// <summary>Round turns only where the swept curve remains clear; retain the exact destination.</summary>
+    public static List<Vector3> RoundCorners(Vector3 start, IReadOnlyList<Vector3> path, Func<Vector3, Vector3, bool>? clear = null)
     {
         var result = new List<Vector3>();
         for (var i = 0; i < path.Count; i++)
@@ -84,11 +84,25 @@ public static class ShopperMotion
             if (dot < -.1f) { result.Add(corner); continue; }
             var radius = Mathf.Min(.12f, Mathf.Min(before.Length(), after.Length()) * .3f);
             var entry = corner - incoming * radius; var exit = corner + outgoing * radius;
-            result.Add(entry);
-            for (var step = 1; step <= 4; step++)
+            var curve = new List<Vector3> { entry };
+            for (var step = 1; step <= 6; step++)
             {
-                var t = step / 4f;
-                result.Add(entry * (1 - t) * (1 - t) + corner * (2 * t * (1 - t)) + exit * t * t);
+                var t = step / 6f;
+                curve.Add(entry * (1 - t) * (1 - t) + corner * (2 * t * (1 - t)) + exit * t * t);
+            }
+            var previous = result.Count > 0 ? result[^1] : start;
+            var safe = true;
+            foreach (var point in curve) { if (clear != null && !clear(previous, point)) { safe = false; break; } previous = point; }
+            if (safe && (clear == null || clear(previous, path[i + 1]))) result.AddRange(curve);
+            else result.Add(corner);
+        }
+        if (clear != null)
+        {
+            var previous = start;
+            foreach (var point in result)
+            {
+                if (!clear(previous, point)) return [.. path];
+                previous = point;
             }
         }
         return result;

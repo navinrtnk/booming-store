@@ -32,7 +32,6 @@ public partial class StoreGame : Node3D
     public bool CanUndo => Editing && _history.CanUndo;
     public bool CanRedo => Editing && _history.CanRedo;
     private Node3D _layout = null!, _floors = null!, _walls = null!, _overlay = null!;
-    private PersonActor? _cashier;
     private readonly Dictionary<int, Node3D> _objects = [];
     private readonly StoreHistory _history = new();
     private StoreTrading _trading = null!;
@@ -125,7 +124,7 @@ public partial class StoreGame : Node3D
         Clear(_layout); Clear(_floors); _objects.Clear();
         _floorGrid = Tool != "select" && Editing; Visuals.Floors(_floors, State, _floorGrid);
         foreach (var i in State.Items) _objects[i.Id] = Visuals.Item(_layout, i);
-        RebuildWalls(); Navigation.Rebuild(State); RefreshStaff(); UpdateOverlay(true);
+        RebuildWalls(); Navigation.Rebuild(State); UpdateOverlay(true);
         Hud?.RefreshInspector();
     }
     private void RefreshItem(StoreItem item)
@@ -149,13 +148,6 @@ public partial class StoreGame : Node3D
             Geometry.Text(_walls, "StoreSubtitle", "O B J E C T S   /   L I V I N G", new(0, 1.82f, -4.86f), .0013f, new("b8c4b5"), 40);
         }
     }
-    private void RefreshStaff()
-    {
-        if (Checkout == null) { _cashier?.QueueFree(); _cashier = null; return; }
-        if (_cashier == null) { _cashier = new(); AddChild(_cashier); _cashier.Build(this, 1, true); }
-        _cashier.Position = Checkout.Position + Vector3.Back.Rotated(Vector3.Up, Mathf.DegToRad(Checkout.Rotation)) * -.95f;
-        _cashier.RotationDegrees = new(0, Checkout.Rotation, 0);
-    }
     public override void _Process(double delta)
     {
         Camera.OverUi = Hud.IsOverUi();
@@ -178,7 +170,6 @@ public partial class StoreGame : Node3D
             Save(false); Hud.RefreshInspector();
         }
         if (Mathf.Abs(Mathf.Sin(Camera.Yaw) - Mathf.Sin(_lastYaw)) > .25f || Mathf.Abs(Mathf.Cos(Camera.Yaw) - Mathf.Cos(_lastYaw)) > .25f) RebuildWalls();
-        if (_cashier != null) _cashier.AttentionTarget = Queue.Count > 0 ? Queue[0].Position + Vector3.Up * 1.5f : null;
         UpdateOverlay();
         _hudTime += (float)delta; if (_hudTime > .15f) { Hud.RefreshStats(); _hudTime = 0; }
     }
@@ -197,6 +188,7 @@ public partial class StoreGame : Node3D
                 case Key.Key2: Camera.SetView(2); return;
                 case Key.Key3: Camera.SetView(3); return;
                 case Key.F: Camera.ToggleFollow(); return;
+                case Key.C: Keeper.ServeCheckout(); return;
                 case Key.I or Key.J or Key.K or Key.L: Keeper.MoveFromKey(k.Keycode); return;
                 case Key.F5: Save(); return;
                 case Key.F9: TryLoad(); return;
@@ -419,12 +411,14 @@ public partial class StoreGame : Node3D
         { Notify("The store needs exactly one checkout counter, kept as a fixture."); return; }
         if (Navigation.Path(Navigation.Entrance, QueueSpot(0)) == null)
         { Notify("The checkout is blocked. Leave a clear route from the entrance."); return; }
+        if (CashierSpot is not { } service || !Navigation.CanReach(Keeper.Actor.Position, service))
+        { Notify("Leave a clear route behind the counter so she can serve customers."); return; }
         var available = State.Items.Where(i => i.ForSale && i.Stock > 0).ToArray();
         var reachable = available.Count(i => Navigation.Approach(i, Navigation.Entrance) != null);
         if (reachable == 0) { Notify("Stock at least one accessible object marked for sale."); return; }
         CancelTool(); Selected = null; _history.Clear();
         State.Day++; State.DayRevenue = 0; State.DayCost = 0; State.DaySales = 0; State.TradingSeconds = 0;
-        _trading = new(State); Open = true; _arrivals.Reset(); Speed = 1;
+        _trading = new(State); Open = true; _arrivals.Reset(); Speed = 1; Keeper.EnableAutomaticCheckout();
         Notify($"Day {State.Day} · Open for business", reachable < available.Length ? $"{available.Length - reachable} product(s) cannot be reached. Review the layout after closing." : "Customers are on their way. Prices influence their buying decisions."); Hud.RefreshInspector();
     }
     public int Reserved(StoreItem item) => _trading?.Reserved(item) ?? 0;
@@ -440,10 +434,12 @@ public partial class StoreGame : Node3D
     public Vector3 QueueSpot(int index)
     {
         if (Checkout == null) return Navigation.Entrance;
-        return ShopNavigation.Point(ShopNavigation.Cell(Checkout.Position + new Vector3(0, 0, 1.1f + index * .55f).Rotated(Vector3.Up, Mathf.DegToRad(Checkout.Rotation))));
+        return Checkout.Position + new Vector3(0, 0, 1.1f + index * .68f).Rotated(Vector3.Up, Mathf.DegToRad(Checkout.Rotation));
     }
+    public Vector3? CashierSpot => Checkout is { } counter ? counter.Position + new Vector3(0, 0, -.95f).Rotated(Vector3.Up, Mathf.DegToRad(counter.Rotation)) : null;
     public bool CompleteSale(Shopper shopper)
     {
+        if (!Keeper.CanServe(shopper)) return false;
         var receipt = _trading.Checkout(shopper.GetInstanceId());
         if (receipt == null) return false;
         var (item, price) = receipt;

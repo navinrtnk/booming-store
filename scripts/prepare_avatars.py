@@ -216,7 +216,8 @@ class GLB:
         return {"index":len(self.doc["textures"])-1}
 
     def material(self,name,albedo,normal=None,ao=None,alpha=False,color=None):
-        pbr={"baseColorTexture":self.texture(albedo),"metallicFactor":0,"roughnessFactor":.6 if name=="Skin" else .85}
+        pbr={"metallicFactor":0,"roughnessFactor":.6 if name=="Skin" else .85}
+        if albedo:pbr["baseColorTexture"]=self.texture(albedo)
         if color:pbr["baseColorFactor"]=color
         material={"name":name,"pbrMetallicRoughness":pbr,"doubleSided":alpha or name=="Clothing"}
         if normal:material["normalTexture"]=dict(self.texture(normal),scale=.7)
@@ -225,7 +226,7 @@ class GLB:
         self.doc["materials"].append(material)
         return len(self.doc["materials"])-1
 
-    def mesh(self,name,vertices,weights,uvs,faces,material,smooth=False,eye=False):
+    def mesh(self,name,vertices,weights,uvs,faces,material,smooth=False,eye=False,flowing=False):
         vertices,weights=self.avatar.pose(vertices,weights)
         if smooth:
             values,uvs,faces=subdivide(np.hstack([vertices,weights]),uvs,faces)
@@ -261,7 +262,15 @@ class GLB:
         for layer in range(2):
             attributes[f"JOINTS_{layer}"]=self.array(joints[:,layer*4:layer*4+4],"VEC4",5123,34962)
             attributes[f"WEIGHTS_{layer}"]=self.array(weights[:,layer*4:layer*4+4],"VEC4",target=34962)
-        self.doc["meshes"].append({"name":name,"primitives":[{"attributes":attributes,"indices":self.array(np.array(indices).reshape(-1),"SCALAR",5125,34963),"material":material}]})
+        primitive={"attributes":attributes,"indices":self.array(np.array(indices).reshape(-1),"SCALAR",5125,34963),"material":material}
+        mesh={"name":name,"primitives":[primitive]}
+        if flowing:
+            points=np.array(positions);tip=np.clip((1.56-points[:,1])/.30,0,1)**1.5
+            primitive["targets"]=[]
+            for direction in [[.030,0,0],[-.030,0,0],[0,0,-.025]]:
+                primitive["targets"].append({"POSITION":self.array(tip[:,None]*np.array(direction),"VEC3",bounds=True)})
+            mesh.update(weights=[0,0,0],extras={"targetNames":["SwayLeft","SwayRight","SwayBack"]})
+        self.doc["meshes"].append(mesh)
         self.doc["nodes"][0]["children"].append(len(self.doc["nodes"]))
         self.doc["nodes"].append({"name":name,"mesh":len(self.doc["meshes"])-1,"skin":0})
 
@@ -305,6 +314,51 @@ def prepare():
 
 
 
+def garment_piece(avatar,stem,upper):
+    vertices,weights,uvs,faces=avatar.fitted(stem)
+    posed,_=avatar.pose(vertices,weights)
+    adjacent=defaultdict(set)
+    for face,_ in faces:
+        for i,_ in face:adjacent[i].update(j for j,_ in face)
+    seed=int(np.argmax(posed[:,1]) if upper else np.argmin(posed[:,1]))
+    selected={seed};pending=[seed]
+    while pending:
+        current=pending.pop()
+        for other in adjacent[current]-selected:selected.add(other);pending.append(other)
+    return vertices,weights,uvs,[(face,g) for face,g in faces if face[0][0] in selected]
+
+
+def shopkeeper():
+    """Keep the original cashier's face; tailor a cotton dress and softly moving long hair."""
+    OUTPUT.mkdir(parents=True,exist_ok=True)
+    avatar=Avatar("caucasian-female-young",True)
+    # The short sleeves expose forearms that the original blouse covered.
+    avatar.skin_faces=[(f,g) for f,g in avatar.faces if g=="body" and
+        ((np.all(avatar.base[[i for i,_ in f],1]>.445) and np.all(np.abs(avatar.base[[i for i,_ in f],0])<.19)) or
+         (np.all(np.abs(avatar.base[[i for i,_ in f],0])>.19) and np.all(avatar.base[[i for i,_ in f],1]>.05)) or
+         np.all(avatar.base[[i for i,_ in f],1]<-.20))]
+    glb=GLB(avatar)
+    glb.mesh("Skin",avatar.base,avatar.weights,np.array(avatar.uvs),avatar.skin_faces,glb.material("Skin","young_lightskinned_female_diffuse.png"),True)
+    a,aw,au,af=garment_piece(avatar,"female_casualsuit01",True)
+    b,bw,bu,bf=garment_piece(avatar,"female_elegantsuit01",False)
+    # A crew-neck top and an easy A-line skirt share one fabric, with a little room at the hem.
+    flare=np.clip((1.02-(b[:,1]+OFFSET[1]))/.43,0,1)
+    b[:,0]*=1+flare*.25;b[:,2]*=1+flare*.12;b[:,1]-=flare*.025
+    faces=af+[([(i+len(a),t+len(au)) for i,t in f],g) for f,g in bf]
+    cloth=glb.material("Cotton dress",None,color=[.55,.66,.55,1])
+    glb.mesh("Clothing",np.vstack([a,b]),np.vstack([aw,bw]),np.vstack([au,bu]),faces,cloth,True)
+    for stem,texture in [("long01","long01_diffuse.png"),("eyebrow001","eyebrow001.png"),("eyelashes01","eyelashes01.png")]:
+        vertices,weights,uvs,faces=avatar.fitted(stem)
+        if stem=="long01":
+            tip=np.clip((1.56-(vertices[:,1]+OFFSET[1]))/.30,0,1)
+            vertices[:,0]+=tip*(np.sign(vertices[:,0])*.012+np.sin(vertices[:,1]*24)*.008)
+        glb.mesh("FlowingHair" if stem=="long01" else stem,vertices,weights,uvs,faces,
+            glb.material("Hair" if stem=="long01" else stem,texture,alpha=True),flowing=stem=="long01")
+    glb.mesh("Eyes",*avatar.fitted("high-poly"),glb.material("Eyes","brown_eye.png"),eye=True)
+    glb.mesh("Teeth",*avatar.fitted("teeth_base"),glb.material("Teeth","teeth.png"))
+    glb.save(OUTPUT/"shopkeeper.glb")
+
+
 def expressions():
     lines=(SOURCE/"face-poseunits.bvh").read_text().splitlines()
     channels=[];offset=0;name=""
@@ -341,5 +395,8 @@ def expressions():
 
 
 if __name__=="__main__":
-    expressions()
-    prepare()
+    import sys
+    if "--shopkeeper-only" not in sys.argv:
+        expressions()
+        prepare()
+    shopkeeper()
