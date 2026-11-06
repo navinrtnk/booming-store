@@ -1,0 +1,28 @@
+; Booming Store — Copyright (c) 2026 Navin Ratnayake.
+config_version=5
+[application]
+config/name="Booming Store"
+config/version="0.1.1"
+run/main_scene="res://Scenes/Store.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/icon="res://Assets/icon.svg"
+[display]
+window/size/viewport_width=1600
+window/size/viewport_height=1000
+window/size/window_width_override=1440
+window/size/window_height_override=900
+window/stretch/mode="canvas_items"
+[dotnet]
+project/assembly_name="BoomingStore"
+[editor]
+; Keep C# resource paths intact in exported text scenes, as in Bartender.
+export/convert_text_resources_to_binary=false
+[rendering]
+renderer/rendering_method="forward_plus"
+textures/default_filters/anisotropic_filtering_level=4
+anti_aliasing/quality/msaa_3d=1
+anti_aliasing/quality/use_taa=true
+environment/ssao/quality=3
+environment/ssao/half_size=false
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/positional_shadow/atlas_size=4096

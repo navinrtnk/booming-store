@@ -1,0 +1,11 @@
+# Customer asset sources
+
+These graphical inputs and rig/pose data are **CC0-1.0**, separately from the game's new code and the MIT avatar-preparation script.
+
+`Avatars/*.glb` are standing skinned characters generated from MakeHuman hm08, default skeleton and skin weights, and young-adult macrodetail targets. Exposed head, neck, chest, hands and skirt-visible legs are exported. Clothing supplies the covered body. Five shoppers use Caucasian, African and Asian male/female target variants, with fitted casual shirts/jeans or blouse/skirt outfits. These source asset names describe the upstream data, not a character identity system.
+
+Hair uses short02, short04, long01, bob01 and braid01 with fitted eyebrow001 and eyelashes01. Eyes and teeth use core high-poly eyes, brown iris textures and teeth_base. Clothing includes diffuse, normal and AO maps. Skin textures are the MakeHuman core male/female atlases. `expression-poses.json` converts selected facial pose units for smiles and blinking. Shoes, shopping bags and animation sequencing are original game code.
+
+Inputs come from the [MakeHuman core repository](https://github.com/makehumancommunity/makehuman) and [CC0 system asset pack](https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip). Authors include the MakeHuman Team, Data Collection AB, Joel Palmius and Jonas Hauquier. The [upstream license](https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md) covers graphical data, skeletons, weights, targets and poses under CC0.
+
+`sources.json` records original download URLs and SHA-256 hashes, inherited from the verified Bartender asset pipeline. Regenerate with `scripts/fetch_customer.py` followed by `scripts/prepare_avatars.py` (NumPy required). The latter is adapted MIT code, preserved under LICENSES/Bartender-MIT.txt. Standing arm placement and unposed legs replace Bartender's seated geometry. Runtime meshes are generated derivatives, not byte-identical upstream inputs. No modeling application code is included.

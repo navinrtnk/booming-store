@@ -1,0 +1,74 @@
+[
+  {
+    "path": "Materials/white_oak_veneer/albedo.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/white_oak_veneer/white_oak_veneer_diff_4k.jpg",
+    "sha256": "3d37444db4293941ef1a9794d6a52457e26d7729ccab6434e5136c093168ed8e",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/white_oak_veneer/normal.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/white_oak_veneer/white_oak_veneer_nor_gl_4k.jpg",
+    "sha256": "6fa75cd8f2aff2a13ee67fa5257d1c6b535aeccc13de92f0c59903f530af77aa",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/white_oak_veneer/roughness.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/white_oak_veneer/white_oak_veneer_rough_4k.jpg",
+    "sha256": "3330235fbdbd061073040f25f27cc76b74ccd8489d8ec5aeb06a4fe2f20b83d3",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/wood_floor/albedo.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_floor/wood_floor_diff_4k.jpg",
+    "sha256": "366789dbb28a4d6b6a8d3dad51eb8930444d6aa26dce418624b12b5bf1d0c46b",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/wood_floor/normal.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_floor/wood_floor_nor_gl_4k.jpg",
+    "sha256": "b579e55fa92aaa483775948cf46d27797546dedae2b32f75e9a1acf0ec00b0bb",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/wood_floor/roughness.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_floor/wood_floor_rough_4k.jpg",
+    "sha256": "686ea805e8a855477b00007341854b0d3cc1709f8add5fc707904f966db42691",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/marble_01/albedo.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/marble_01/marble_01_diff_4k.jpg",
+    "sha256": "3c7805a8988323b46d45d747530b659b4aa46e5bfa0b57c3d21083a403de229d",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/marble_01/normal.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/marble_01/marble_01_nor_gl_4k.jpg",
+    "sha256": "ca7efbe72f13bf156545485762307e91d6077b06746dc7cc1742908cf9873cbd",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/marble_01/roughness.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/marble_01/marble_01_rough_4k.jpg",
+    "sha256": "519e24e673323b0f09f6591e6339c95f9c6aedad3798e4a46d43b34bf335d649",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/white_plaster_02/albedo.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/white_plaster_02/white_plaster_02_diff_4k.jpg",
+    "sha256": "a0c48b2de0d4e4c5ad51cda7110dbeb31698fa41b87bce3b28caa608b6e64745",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/white_plaster_02/normal.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/white_plaster_02/white_plaster_02_nor_gl_4k.jpg",
+    "sha256": "addfca7ccb03ce152f1dedc388d7c8bfe323229fca44b5414f069e7c3c0365a6",
+    "license": "CC0-1.0"
+  },
+  {
+    "path": "Materials/white_plaster_02/roughness.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/white_plaster_02/white_plaster_02_rough_4k.jpg",
+    "sha256": "810fc5511cbf898fc803d307694d930d646be62c1dc4ba29071363baf0e04a4f",
+    "license": "CC0-1.0"
+  }
+]

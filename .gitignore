@@ -1,0 +1,12 @@
+.godot/
+.mono/
+bin/
+obj/
+builds/
+.tools/
+__pycache__/
+*.pyc
+*.user
+*.tmp
+.DS_Store
+Thumbs.db

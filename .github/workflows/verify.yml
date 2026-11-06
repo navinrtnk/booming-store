@@ -1,0 +1,35 @@
+name: Verify foundation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install portable Godot .NET
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'godot.zip'
+          Invoke-WebRequest 'https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_win64.zip' -OutFile $archive
+          $tools = Join-Path $env:RUNNER_TEMP 'godot'
+          Expand-Archive -LiteralPath $archive -DestinationPath $tools
+          $godot = Get-ChildItem -LiteralPath $tools -Recurse -Filter '*console.exe' | Select-Object -First 1 -ExpandProperty FullName
+          "GODOT_BIN=$godot" >> $env:GITHUB_ENV
+      - name: Build, unit tests, and headless gameplay
+        shell: pwsh
+        run: ./scripts/run.ps1 -Test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-results
+          path: .godot/test-results/
+          include-hidden-files: true
