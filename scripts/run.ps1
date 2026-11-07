@@ -10,7 +10,8 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
 }
 
 # Reuse the existing optional portable tools without altering system installations.
-$toolRoots = @((Join-Path $env:LOCALAPPDATA 'BoomingStore\Tools'), (Join-Path $env:LOCALAPPDATA 'BartenderSpecialogist\Tools'))
+$toolRoots = @((Join-Path $env:LOCALAPPDATA 'BoomingStore\Tools'), (Join-Path $env:LOCALAPPDATA 'BartenderSpecialogist\Tools'),
+    (Join-Path $env:LOCALAPPDATA 'Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\BartenderSpecialogist\Tools'))
 foreach ($root in $toolRoots) {
     if (Test-Path (Join-Path $root 'dotnet\dotnet.exe')) {
         $env:DOTNET_ROOT = Join-Path $root 'dotnet'
@@ -62,7 +63,7 @@ try {
         $testDocs = Join-Path $buildRoot 'Tests'
         New-Item -ItemType Directory -Force -Path $testDocs | Out-Null
         Copy-Item -LiteralPath 'Tests\README.md' -Destination $testDocs -Force
-        foreach ($folder in @('Customer', 'Materials')) {
+        foreach ($folder in @('Customer', 'Materials', 'Audio')) {
             $destination = Join-Path $buildRoot "Assets\$folder"
             New-Item -ItemType Directory -Force -Path $destination | Out-Null
             Copy-Item -LiteralPath "Assets\$folder\sources.json" -Destination $destination -Force

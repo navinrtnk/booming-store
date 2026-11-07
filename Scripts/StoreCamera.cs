@@ -15,7 +15,7 @@ public partial class StoreCamera : Camera3D
     public override void _Ready() { Fov = 43; Near = .1f; Far = 150; UpdatePose(); }
     public override void _Process(double delta)
     {
-        if (GetViewport().GuiGetFocusOwner() is LineEdit) return;
+        if (GetViewport().GuiGetFocusOwner() is LineEdit or Godot.Range) return;
         var pan = new Vector3((Input.IsPhysicalKeyPressed(Key.D) ? 1 : 0) - (Input.IsPhysicalKeyPressed(Key.A) ? 1 : 0), 0,
             (Input.IsPhysicalKeyPressed(Key.S) ? 1 : 0) - (Input.IsPhysicalKeyPressed(Key.W) ? 1 : 0));
         if (!pan.IsZeroApprox()) Following = false;

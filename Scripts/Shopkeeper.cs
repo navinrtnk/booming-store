@@ -36,12 +36,30 @@ public partial class Shopkeeper : Node
             position = Enumerable.Range(0, ShopNavigation.Width * ShopNavigation.Depth)
                 .Select(i => ShopNavigation.Point(new(i % ShopNavigation.Width, i / ShopNavigation.Width)))
                 .Where(p => _game.Navigation.CanReach(_game.Navigation.Entrance, p)).OrderBy(p => p.DistanceSquaredTo(position)).FirstOrDefault(_game.Navigation.Entrance);
-        Actor.PlaceAt(position); Actor.SetCargo(_orders.Carrying ? _orders.Target?.Product.Name : null);
+        Actor.PlaceAt(position);
+        if (_game.CashierSpot is { } counterSpot && position.DistanceTo(counterSpot) < .2f && _game.Checkout != null)
+            Actor.Rotation = new(0, Mathf.DegToRad(_game.Checkout.Rotation), 0);
+        Actor.SetCargo(_orders.Carrying ? _orders.Target?.Product.Name : null);
         ResetGesture(); _status = _orders.Busy ? "Resuming restock" : "Ready · click floor to walk";
         SyncPosition(); _game.Hud?.RefreshInspector();
     }
     public void SyncPosition() { _game.State.KeeperX = Actor.Position.X; _game.State.KeeperZ = Actor.Position.Z; }
-    public void EnableAutomaticCheckout() => _game.State.AutoCheckout = true;
+    public void Welcome(Shopper shopper)
+    {
+        shopper.React(PersonBeat.Greeting, Actor.Position + Vector3.Up * 1.4f, VoiceLine.Greeting);
+        if (Actor.Position.DistanceTo(shopper.Position) < 10)
+            Actor.React(PersonBeat.Greeting, shopper.Position + Vector3.Up * 1.4f, VoiceLine.Greeting, .65f);
+    }
+    public void BeginCheckout(Shopper shopper)
+    {
+        Actor.React(PersonBeat.Chat, shopper.Position + Vector3.Up * 1.4f, VoiceLine.Agree);
+        shopper.React(PersonBeat.Chat, Actor.Position + Vector3.Up * 1.4f, VoiceLine.Agree, .65f);
+    }
+    public void ThankCustomer(Shopper shopper)
+    {
+        Actor.React(PersonBeat.Thanks, shopper.Position + Vector3.Up * 1.4f, VoiceLine.Thanks, .45f);
+        shopper.React(PersonBeat.Thanks, Actor.Position + Vector3.Up * 1.4f, VoiceLine.Thanks);
+    }
     public bool Request(StoreItem item)
     {
         if (!_game.State.Items.Contains(item) || item.Stock != 0 || !item.ForSale)
@@ -78,7 +96,6 @@ public partial class Shopkeeper : Node
     {
         _orders.Cancel(); _work = Work.Idle; _manualWalk = false; _checkoutRequested = false;
         Actor.Stop(); Actor.SetCargo(null); ResetGesture();
-        _game.State.AutoCheckout = command.Kind != KeeperCommandKind.Stop;
         switch (command.Kind)
         {
             case KeeperCommandKind.Walk:
@@ -131,7 +148,9 @@ public partial class Shopkeeper : Node
                 _work = Work.Fetching; _status = "Fetching a replacement"; break;
             case Work.Fetching:
                 if (Actor.IsWalking) break;
-                _work = Work.Collecting; _timer = 1.5f; break;
+                _work = Work.Collecting; _timer = 1.5f;
+                if (source != null) _game.Audio.Play(ShopSound.Pickup, source.Position);
+                Actor.React(PersonBeat.Work, source?.Position + Vector3.Up, VoiceLine.Work); break;
             case Work.Collecting:
                 _timer -= dt; Actor.AttentionTarget = source?.Position + Vector3.Up;
                 if (source != null) Actor.Face(source.Position, dt);
@@ -153,6 +172,7 @@ public partial class Shopkeeper : Node
                 var delivered = _orders.Deliver();
                 if (delivered == null) { Fail("This display spot is no longer available."); break; }
                 Actor.SetCargo(null); ResetGesture(); _work = Work.Idle; _status = "Ready · click floor to walk";
+                _game.Audio.Play(ShopSound.Place, delivered.Position); Actor.React(PersonBeat.Thanks, delivered.Position + Vector3.Up, VoiceLine.Work);
                 _game.StockChanged(delivered); _game.Notify($"Restocked {delivered.Product.Name}", "One visible object · one item available for sale");
                 if (Next != null) StartNextCommand(); break;
         }
@@ -161,8 +181,7 @@ public partial class Shopkeeper : Node
     { Actor.GestureAmount = 0; Actor.AttentionTarget = null; Actor.ReachTarget = null; Actor.Say("YOU"); }
     private void ServeQueue(float dt)
     {
-        if (!_game.State.AutoCheckout) return;
-        if (_game.Queue.Count == 0 && !_checkoutRequested)
+        if (!_checkoutRequested)
         {
             if (_work is Work.ToRegister or Work.Serving) { Actor.Stop(); ResetGesture(); _work = Work.Idle; }
             if (!Actor.IsWalking) _status = "Ready · click floor to walk";

@@ -85,7 +85,6 @@ public sealed class StoreState
     public float KeeperZ { get; set; } = -3.95f;
     public List<int> RestockQueue { get; set; } = [];
     public int CarriedItemId { get; set; }
-    public bool AutoCheckout { get; set; } = true;
     public KeeperCommand? NextKeeperCommand { get; set; }
     public static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions CompactJson = new();

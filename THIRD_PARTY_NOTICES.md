@@ -10,6 +10,10 @@ Booming Store is an original project by **Navin Ratnayake (@navinrtnk)**. The ro
 
 Character geometry, skeletons, skin weights, targets, clothing, hair, eyes, teeth and facial pose inputs come from MakeHuman's CC0 graphical assets. Original authors include the MakeHuman Team, Data Collection AB, Joel Palmius and Jonas Hauquier. See [asset sources](Assets/Customer/SOURCES.md), the URL/hash manifest in Assets/Customer/sources.json, and [MakeHuman licensing](https://www.makehumancommunity.org/about/license.html). No MakeHuman application source is bundled.
 
+## Kokoro vocal generation · Apache-2.0 model
+
+Short fictional vocal phrases were generated locally with generic Kokoro voices using the Apache-2.0 [Kokoro-82M model](https://huggingface.co/hexgrad/Kokoro-82M) and its credited ONNX distribution. Model/voice input URLs and hashes, phrase text and output hashes are in Assets/Audio/sources.json; see Assets/Audio/SOURCES.md and LICENSES/Kokoro-Apache-2.0.txt. Model weights, voice embeddings and speech tooling are not bundled. No EA/The Sims sound recordings or dialogue are used, and no exclusive ownership of third-party models or training material is claimed. The music and store effects use original procedural synthesis rather than third-party recordings.
+
 ## Poly Haven materials · CC0-1.0
 
 White Oak Veneer, Wood Floor, Marble 01 and White Plaster 02 supply 4K photographic albedo, normal and roughness maps. See [asset sources](Assets/Materials/SOURCES.md), Assets/Materials/sources.json and [Poly Haven's license](https://polyhaven.com/license).

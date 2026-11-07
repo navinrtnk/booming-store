@@ -23,6 +23,17 @@ public static class FoundationChecks
             Check(game.FindChildren("*", "Skeleton3D", true, false).Count == 1, "The shop must contain only its playable shopkeeper before customers arrive.");
             Check(game.Keeper.Actor.IsShopkeeper && game.Keeper.Actor.FindChild("FlowingHair", true, false) is MeshInstance3D hair && hair.Mesh is ArrayMesh hairMesh && hairMesh.GetBlendShapeCount() == 3,
                 "The cashier-based shopkeeper or her flowing hair did not load.");
+            var settledBeforePreferences = game.State.Serialize();
+            game._UnhandledInput(new InputEventKey { Keycode = Key.F11, Pressed = true });
+            Check(game.Preferences.Fullscreen, "Fullscreen shortcut was ignored.");
+            game._UnhandledInput(new InputEventKey { Keycode = Key.F11, Pressed = true });
+            game._UnhandledInput(new InputEventKey { Keycode = Key.M, Pressed = true });
+            Check(!game.Preferences.Fullscreen && game.Preferences.Muted && AudioServer.IsBusMute(0), "Window/mute preferences were not applied.");
+            game._UnhandledInput(new InputEventKey { Keycode = Key.M, Pressed = true });
+            Check(game.PreferencesPath.Contains("test-results") && !GamePreferences.Load(game.PreferencesPath).Muted,
+                "Preferences were not saved to the isolated test location.");
+            Check(game.State.Serialize() == settledBeforePreferences, "Presentation preferences changed settled store data.");
+            Check(game.Audio.EnvelopeCount == 20, "Voice clips or mouth envelopes did not load.");
             var vase = game.State.Items.First(i => i.Kind == "vase"); var id = vase.Id;
             game.Select(vase); game.ChangePrice(5);
             Check(game.State.Items.Single(i => i.Id == id).Price == 43, "Price edit failed.");
@@ -73,8 +84,9 @@ public static class FoundationChecks
 
             var initialCash = game.State.Cash;
             var initialStock = game.State.Items.ToDictionary(i => i.Id, i => i.Stock);
+            game.SetSpeed(0);
             game.ToggleOpen(); Check(game.Open && !game.Editing, "Starter shop did not open.");
-            game.Keeper.Cancel(); // Let a real line form before testing task priority.
+            Check(game.Speed == 1 && !game.Audio.IsPaused, "Opening a paused store did not resume its audio and tasks together.");
 
             game.Select(game.State.Items.Single(i => i.Id == id));
             var before = game.State.Serialize(); game.Rotate();
@@ -85,7 +97,7 @@ public static class FoundationChecks
             var maximumGuests = 0;
             var browsingStarted = new Dictionary<Shopper, double>();
             var shortestBrowse = double.PositiveInfinity;
-            var testedServiceInterruption = false; var requestedCheckout = false; var previousSales = game.State.Sales;
+            var testedServiceInterruption = false; var requestedCheckout = false; var resumedCheckout = false; var previousSales = game.State.Sales;
             for (var frame = 0; frame < 6000 && game.State.Sales < 3; frame++)
             {
                 await Frame(); maximumGuests = Math.Max(maximumGuests, game.Shoppers.Count);
@@ -95,7 +107,23 @@ public static class FoundationChecks
                     previousSales = game.State.Sales;
                 }
                 if (!requestedCheckout && game.Queue.Count >= 2)
-                { Check(game.Keeper.ServeCheckout(), "Could not send the shopkeeper to checkout."); requestedCheckout = true; }
+                {
+                    var waitingPosition = game.Keeper.Actor.Position;
+                    for (var waiting = 0; waiting < 120; waiting++) await Frame();
+                    Check(!game.Keeper.Actor.IsWalking && game.Keeper.Actor.Position.DistanceTo(waitingPosition) < .01f && game.State.Sales == 0,
+                        "Waiting customers forced the shopkeeper to return to checkout.");
+                    foreach (var person in game.People) { person.StopVoice(); person.React(PersonBeat.Thanks, line: VoiceLine.Thanks); }
+                    var spokenBefore = game.Audio.SpokenLines;
+                    await Frame(); await Frame();
+                    Check(game.People.Count(p => p.IsSpeaking) == 2 && game.Audio.SpokenLines == spokenBefore + 2,
+                        "Concurrent reactions exceeded the two-voice limit or suppressed both voices.");
+                    game.SetSpeed(0);
+                    var pausedMouths = game.People.Select(p => p.MouthAmount).ToArray();
+                    for (var waiting = 0; waiting < 5; waiting++) await Frame();
+                    Check(game.People.Select(p => p.MouthAmount).SequenceEqual(pausedMouths), "Pausing advanced character mouth animation.");
+                    game.SetSpeed(3);
+                    Check(game.Keeper.ServeCheckout(), "Could not send the shopkeeper to checkout."); requestedCheckout = true;
+                }
                 if (!testedServiceInterruption && game.Shoppers.Any(s => s.State == Shopper.Activity.Paying))
                 {
                     testedServiceInterruption = true; var cashBeforeCommand = game.State.Cash; var salesBeforeCommand = game.State.Sales;
@@ -111,6 +139,14 @@ public static class FoundationChecks
                         "She served another lined-up customer before following the newest command.");
                     previousSales = game.State.Sales;
                 }
+                if (testedServiceInterruption && !resumedCheckout && !game.Keeper.Actor.IsWalking && game.Keeper.Actor.Position.DistanceTo(new(4.25f, 0, 3.4f)) < .03f)
+                {
+                    var cashWhileFree = game.State.Cash;
+                    for (var waiting = 0; waiting < 120; waiting++) await Frame();
+                    Check(game.State.Cash == cashWhileFree && !game.Keeper.Actor.IsWalking && game.Keeper.Actor.Position.DistanceTo(new(4.25f, 0, 3.4f)) < .03f,
+                        "Finishing a walking command automatically sent her back to the line.");
+                    Check(game.Keeper.ServeCheckout(), "Explicit checkout command failed after walking away."); resumedCheckout = true;
+                }
                 foreach (var shopper in game.Shoppers)
                 {
                     if (shopper.State == Shopper.Activity.Browsing) browsingStarted.TryAdd(shopper, game.State.TradingSeconds);
@@ -122,8 +158,13 @@ public static class FoundationChecks
                 "An extra cashier or shopkeeper was spawned.");
             Check(maximumGuests <= CustomerArrivals.Capacity, "Shop exceeded its quieter customer limit.");
             Check(double.IsFinite(shortestBrowse) && shortestBrowse >= 7.9, "Customers did not linger at displays.");
+            Check(game.Audio.EventCounts.GetValueOrDefault(ShopSound.Door) > 0 && game.Audio.EventCounts.GetValueOrDefault(ShopSound.Checkout) > 0,
+                "Arrivals or purchases did not dispatch their sounds.");
+            Check(game.Audio.SpokenLines > 0 && game.Keeper.Actor.ExpressionsStarted > 0, "Characters did not greet or speak during live trading.");
             Check(game.State.Sales >= 3, "Live shoppers failed to complete three purchases before timeout.");
+            game.SetSpeed(0);
             game.ToggleOpen(); Check(!game.Open, "Closing did not stop new arrivals.");
+            Check(game.Speed == 1 && !game.Audio.IsPaused, "Closing a paused store did not resume its audio and tasks together.");
             for (var frame = 0; frame < 6000 && !game.Editing; frame++) await Frame();
             await Frame(); await Frame();
             Check(game.Editing && game.Shoppers.Count == 0 && game.Queue.Count == 0, "Shoppers or queue failed to drain after closing: " + string.Join("; ", game.Shoppers.Select(s => $"{s.State} at {s.Position}, destination {s.Destination}, walking {s.IsWalking}")) + $"; keeper {game.Keeper.Actor.Position}");
@@ -147,7 +188,7 @@ public static class FoundationChecks
             Check(empty.Stock == 0 && game.State.Cash == cashBeforeRestock, "Clicking a spot must not instantly restock or charge it.");
             game.SetSpeed(0); var pausedPosition = game.Keeper.Actor.Position;
             for (var frame = 0; frame < 60; frame++) await Frame();
-            Check(game.Keeper.Actor.Position == pausedPosition && empty.Stock == 0 && game.State.Cash == cashBeforeRestock,
+            Check(game.Audio.IsPaused && game.Keeper.Actor.Position == pausedPosition && empty.Stock == 0 && game.State.Cash == cashBeforeRestock,
                 "Pausing did not pause physical restocking.");
             game.SetSpeed(3);
             for (var frame = 0; frame < 3000 && game.State.CarriedItemId == 0; frame++) await Frame();
@@ -170,6 +211,8 @@ public static class FoundationChecks
             for (var frame = 0; frame < 900 && game.Keeper.Actor.IsWalking; frame++) await Frame();
             Check(game.Keeper.Actor.Position.DistanceTo(afterDelivery) < .02f,
                 $"The shopkeeper did not finish the newest walking command: {game.Keeper.Actor.Position}, destination {game.Keeper.Actor.Destination}, failed {game.Keeper.Actor.RouteFailed}.");
+            Check(game.Audio.EventCounts.GetValueOrDefault(ShopSound.Pickup) > 0 && game.Audio.EventCounts.GetValueOrDefault(ShopSound.Place) > 0 &&
+                game.Audio.EventCounts.GetValueOrDefault(ShopSound.Step) > 0, "Physical stocking or walking sounds were not dispatched.");
             var floorEmpty = game.State.Items.First(i => i.ForSale && i.Stock == 0 && i.Y == 0);
             game.Camera.ZoomTo(floorEmpty.Position);
             var edge = floorEmpty.Position + new Vector3(floorEmpty.Footprint.X * .42f, .05f, floorEmpty.Footprint.Y * .42f);
@@ -184,9 +227,21 @@ public static class FoundationChecks
             game.Camera.Home(); game.Select(restocked);
             Check(!game.Hud.FindChildren("*", "Button", true, false).OfType<Button>().Any(b => b.Text.StartsWith("Restock")),
                 "The object's menu still offers instant restocking.");
+            foreach (var player in game.Audio.GetChildren().OfType<AudioStreamPlayer3D>()) player.Stop();
+            var stepsBefore = game.Audio.EventCounts.GetValueOrDefault(ShopSound.Step);
+            var checkoutsBefore = game.Audio.EventCounts.GetValueOrDefault(ShopSound.Checkout);
+            for (var cue = 0; cue < 12; cue++) game.Audio.Play(ShopSound.Step, Vector3.Zero);
+            Check(game.Audio.EventCounts.GetValueOrDefault(ShopSound.Step) == stepsBefore + 6,
+                "Footstep bursts were not bounded by their dedicated channels.");
+            for (var cue = 0; cue < 8; cue++) game.Audio.Play(ShopSound.Checkout, Vector3.Zero);
+            Check(game.Audio.EventCounts.GetValueOrDefault(ShopSound.Checkout) == checkoutsBefore + 8,
+                "Busy footstep or event channels dropped checkout sounds.");
+            game.SetSpeed(0); game.Audio.Play(ShopSound.Checkout, Vector3.Zero);
+            Check(game.Audio.EventCounts.GetValueOrDefault(ShopSound.Checkout) == checkoutsBefore + 8,
+                "A paused store started a new sound.");
             GD.Print($"SCENE_CHECKS passed={passed} sales={game.State.Sales} revenue={game.State.Revenue}");
-            game.GetTree().Quit();
+            await game.QuitCleanly();
         }
-        catch (Exception error) { GD.PushError(error.ToString()); game.GetTree().Quit(1); }
+        catch (Exception error) { GD.PushError(error.ToString()); await game.QuitCleanly(1); }
     }
 }

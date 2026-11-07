@@ -20,6 +20,13 @@ public partial class PersonActor : Node3D
     private Skeleton3D _rig = null!;
     private Node3D _visual = null!, _bag = null!, _cargo = null!;
     private MeshInstance3D? _flowingHair;
+    private readonly PersonExpression _expression = new();
+    private PersonExpression.Pose _social;
+    private PersonVoice _voice = null!;
+    private float _stepCooldown, _lastStepTravel;
+    public bool IsSpeaking => _voice?.IsSpeaking == true;
+    public float MouthAmount => _voice?.MouthAmount ?? 0;
+    public int ExpressionsStarted { get; private set; }
     private float _previousYaw, _hairSway;
     private Label3D _thought = null!, _cargoText = null!;
     private readonly Queue<Vector3> _path = new();
@@ -99,12 +106,27 @@ public partial class PersonActor : Node3D
         Geometry.Box(_cargo, "Tape", new(.04f, .004f, .3f), new(0, .132f, 0), StoreVisuals.Mat("e5d8b8"));
         _cargoText = Geometry.Text(_cargo, "Contents", "", new(0, 0, .153f), .0015f, new("354c3f"), 22);
         _cargo.Visible = false;
+        _voice = new PersonVoice(this, game.Audio, profile, shopkeeper);
         Animate(0, 0);
+    }
+    public void React(PersonBeat beat, Vector3? target = null, VoiceLine? line = null, float delay = 0)
+    {
+        _expression.Start(beat, target); ExpressionsStarted++;
+        _voice.Request(line, delay);
+    }
+    public void PauseVoice(bool paused) => _voice?.SetPaused(paused);
+    public void StopVoice() => _voice?.Stop();
+    public override void _ExitTree() => _voice?.Release();
+    private void AdvanceExpression(float realDelta)
+    {
+        _expression.Advance(realDelta); _social = _expression.Sample(IsShopkeeper);
+        _stepCooldown = Mathf.Max(0, _stepCooldown - realDelta);
+        _voice.Advance(realDelta);
     }
     public override void _Process(double delta)
     {
         var dt = Mathf.Min((float)delta, .1f) * _game.Speed;
-        Animate(dt, StepPerson(dt));
+        Animate(dt, StepPerson(dt), _game.Speed == 0 ? 0 : Mathf.Min((float)delta, .1f));
     }
     protected float StepPerson(float dt)
     {
@@ -121,6 +143,8 @@ public partial class PersonActor : Node3D
             if (_game.Navigation.CanStep(Position, settled)) Position = settled;
         }
         var distance = Position.DistanceTo(previous); _travel += distance;
+        if (_travel - _lastStepTravel >= ShopperMotion.StrideLength * _strideScale * .5f && _stepCooldown <= 0)
+        { _game.Audio.Play(ShopSound.Step, Position); _lastStepTravel = _travel; _stepCooldown = .13f; }
         return Mathf.Clamp(distance / (dt * _walkSpeed), 0, 1);
     }
     public void PlaceAt(Vector3 position)
@@ -141,6 +165,12 @@ public partial class PersonActor : Node3D
         var length = arm.Shoulder.DistanceTo(arm.Elbow) + arm.Elbow.DistanceTo(arm.Hand);
         var hanging = new Vector3(Mathf.Sign(arm.Shoulder.X) * .035f, -length * .94f, .04f);
         var hand = arm.Shoulder + new Quaternion(Vector3.Right, angle) * hanging + relaxed * (1 - _walk * .6f);
+        var socialWeight = (1 - _walk * .8f) * (1 - _carryBlend);
+        var wave = right ? _social.Wave * socialWeight : 0;
+        var waveTarget = arm.Shoulder + new Vector3(-.24f, .13f + Mathf.Sin(_expression.Age * 8) * .025f, .15f);
+        hand = hand.Lerp(waveTarget, wave);
+        var explain = _social.Explain * socialWeight;
+        hand += new Vector3((right ? -.02f : .02f), .13f + Mathf.Sin(_expression.Age * 5 + (right ? 0 : 1.6f)) * .035f, .16f) * explain;
         hand = hand.Lerp(new Vector3((right ? -.19f : .19f) * _strideScale, 1.04f * _strideScale, .34f), _carryBlend);
         if (right && GestureAmount > 0)
         {
@@ -150,7 +180,9 @@ public partial class PersonActor : Node3D
         var pose = PersonPose.SolveArm(arm.Shoulder, arm.Elbow, arm.Hand, hand);
         _rig.SetBonePoseRotation(arm.Upper, pose.Upper);
         _rig.SetBonePoseRotation(arm.Lower, pose.Lower);
-        _rig.SetBonePoseRotation(arm.Wrist, pose.Wrist);
+        var handRotation = Quaternion.Identity.Slerp(new Quaternion(Vector3.Right, 2.5f), wave);
+        handRotation *= Quaternion.Identity.Slerp(new Quaternion(Vector3.Right, .6f), explain * .5f);
+        _rig.SetBonePoseRotation(arm.Wrist, pose.Wrist * handRotation);
     }
     private void Move(float dt)
     {
@@ -226,8 +258,9 @@ public partial class PersonActor : Node3D
         _rig.SetBonePoseRotation(leg.KneeBone, pose.Knee);
         _rig.SetBonePoseRotation(leg.FootBone, pose.Ankle);
     }
-    protected void Animate(float dt, float walking)
+    protected void Animate(float dt, float walking, float realDelta = 0)
     {
+        if (realDelta > 0) AdvanceExpression(realDelta);
         _walk = Mathf.Lerp(_walk, walking, 1 - Mathf.Exp(-8 * dt));
         var phase = _travel / (ShopperMotion.StrideLength * _strideScale) * Mathf.Tau;
         var stride = Mathf.Sin(phase) * _walk;
@@ -242,17 +275,20 @@ public partial class PersonActor : Node3D
             _flowingHair.SetBlendShapeValue(2, _walk * .25f + Mathf.Abs(_hairSway) * .18f);
         }
         _carryBlend = Mathf.Lerp(_carryBlend, CarryingStock ? 1 : 0, 1 - Mathf.Exp(-5 * dt));
-        var body = ShopperMotion.BodyOffset(_travel, _walk, _strideScale) + idle.Body * (1 - _walk);
+        var warmth = IsShopkeeper ? new Vector3(Mathf.Sin(_clock * .6f) * .006f, 0, 0) : Vector3.Zero;
+        var body = ShopperMotion.BodyOffset(_travel, _walk, _strideScale) + (idle.Body + warmth + _social.Body) * (1 - _walk);
         if (ReachTarget is { } low && low.Y < .6f) body.Y -= GestureAmount * .09f;
         _visual.Position = body + new Vector3(0, -_groundOffset, 0);
         PoseLeg(_leftLeg, false, body); PoseLeg(_rightLeg, true, body);
         var browse = GestureAmount;
         PoseArm(_leftArm, false, idle.LeftHand);
         PoseArm(_rightArm, true, idle.RightHand);
-        Pose("spine04", idle.Torso * (1 - _walk * .6f) + new Vector3(browse * .07f, 0, 0));
+        Pose("spine04", (idle.Torso + _social.Torso) * (1 - _walk * .6f) + new Vector3(browse * .07f, 0, 0));
         Pose("spine05", new(0, stride * .018f, idle.Torso.Z * .4f));
-        var head = idle.Head;
-        if (AttentionTarget is { } target)
+        var head = idle.Head + _social.Head;
+        if (IsShopkeeper) head.Z += .018f * (1 - _walk);
+        var lookAt = _social.Weight > .05f ? _expression.LookAt ?? AttentionTarget : AttentionTarget;
+        if (lookAt is { } target)
         {
             var local = ToLocal(target) - new Vector3(0, 1.55f * _strideScale, 0);
             head.X += Mathf.Clamp(-Mathf.Atan2(local.Y, new Vector2(local.X, local.Z).Length()), -.18f, .3f);
@@ -265,7 +301,8 @@ public partial class PersonActor : Node3D
         {
             var q = Quaternion.Identity;
             foreach (var (name, value) in expressions)
-                q *= Quaternion.Identity.Slerp(value, name switch { "BlinkL" or "BlinkR" => amount, "Smile" => _bought ? .35f : IsShopkeeper ? .27f + idle.Smile * .25f : idle.Smile, _ => 0 });
+                q *= Quaternion.Identity.Slerp(value, name switch { "BlinkL" or "BlinkR" => amount, "Smile" => Mathf.Clamp((IsShopkeeper ? .32f + idle.Smile * .25f : _bought ? .35f : idle.Smile) + _social.Smile, 0, .62f),
+                    "Talk" => MouthAmount * .65f, "BrowLift" => _social.Weight * .16f, _ => 0 });
             _rig.SetBonePoseRotation(bone, q.Normalized());
         }
         _bag.Visible = _bought && !CarryingStock;

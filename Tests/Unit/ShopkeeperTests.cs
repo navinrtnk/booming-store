@@ -10,12 +10,12 @@ public class RestockTests
     { var item = Fixtures.Item(id: id); item.Stock = 0; return item; }
 
     [Fact]
-    public void TheNewestCommandAndAutomaticCheckoutPreferenceSurviveSaving()
+    public void TheNewestCommandSurvivesSaving()
     {
-        var state = Fixtures.Shop(Empty()); state.NextId = 2; state.AutoCheckout = false;
+        var state = Fixtures.Shop(Empty()); state.NextId = 2;
         state.NextKeeperCommand = new(KeeperCommandKind.Walk, 2.1f, 3.2f);
         var loaded = StoreState.Parse(state.Serialize());
-        Assert.Equal(state.Serialize(), loaded.Serialize()); Assert.False(loaded.AutoCheckout);
+        Assert.Equal(state.Serialize(), loaded.Serialize());
         Assert.Equal(new Vector3(2.1f, 0, 3.2f), loaded.NextKeeperCommand!.Position);
         state.NextKeeperCommand = new(KeeperCommandKind.Restock, ItemId: 1);
         Assert.Equal(1, StoreState.Parse(state.Serialize()).NextKeeperCommand!.ItemId);

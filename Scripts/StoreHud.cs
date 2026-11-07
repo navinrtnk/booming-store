@@ -10,7 +10,7 @@ public partial class StoreHud : CanvasLayer
     private Control _root = null!;
     private VBoxContainer _catalog = null!, _inspector = null!;
     private Label _cash = null!, _day = null!, _revenue = null!, _status = null!, _detail = null!, _mode = null!, _keeperStatus = null!;
-    private Button _open = null!, _undo = null!, _redo = null!;
+    private Button _open = null!, _undo = null!, _redo = null!, _fullscreen = null!;
     private readonly List<Control> _panels = [];
     private readonly List<Button> _speed = [];
     private static readonly float[] Speeds = [0, 1, 3];
@@ -30,6 +30,8 @@ public partial class StoreHud : CanvasLayer
         row.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         row.AddChild(actions);
+        _fullscreen = Button("Full screen", () => game.SetFullscreen(!game.Preferences.Fullscreen), "F11 or Alt+Enter"); actions.AddChild(_fullscreen);
+        actions.AddChild(Button("Audio", ShowAudioSettings, "Sound levels · M mutes"));
         actions.AddChild(Button("Save", () => game.Save(), "F5 · Save your layout, stock and finances"));
         actions.AddChild(Button("Load", () =>
         {
@@ -74,9 +76,32 @@ public partial class StoreHud : CanvasLayer
         tools.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         foreach (var (text, speed) in new[] { ("Ⅱ", 0f), ("1×", 1f), ("3×", 3f) })
         { var value = speed; var b = Button(text, () => game.SetSpeed(value)); tools.AddChild(b); _speed.Add(b); }
-        var footer = Label("Floor: walk · Empty spot: stock · IJKL: move · Arrows: camera · 1/2/3: views · F: follow · C: checkout · WASD: pan · +/−: zoom · Space: pause", 12, new("35493c"));
+        var footer = Label("Floor: walk · Empty spot: stock · IJKL: move · Arrows: camera · F: follow · C: checkout · F11: full screen · M: mute · WASD: pan · Space: pause", 12, new("35493c"));
         footer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomWide); footer.OffsetTop = -32; footer.OffsetBottom = -10; footer.HorizontalAlignment = HorizontalAlignment.Center; _root.AddChild(footer);
         RefreshCatalog(); RefreshInspector(); RefreshStats();
+    }
+    private void ShowAudioSettings()
+    {
+        var popup = new AcceptDialog { Title = "Shop audio", OkButtonText = "Done" };
+        _root.AddChild(popup);
+        var content = new VBoxContainer(); content.AddThemeConstantOverride("separation", 9); popup.AddChild(content);
+        var introduction = Wrap("Character chatter, store sounds and the boutique theme.", 14);
+        introduction.AddThemeColorOverride("font_color", new("d9ded5")); content.AddChild(introduction);
+        var mute = new CheckBox { Text = "Mute all sound", ButtonPressed = _game.Preferences.Muted }; content.AddChild(mute);
+        mute.Toggled += value => { _game.Preferences.Muted = value; _game.SavePreferences(); };
+        void Slider(string title, float value, Action<float> change)
+        {
+            var heading = Label(title + $" · {value * 100:0}%", 14, Paper); content.AddChild(heading);
+            var slider = new HSlider { MinValue = 0, MaxValue = 1, Step = .05, Value = value, CustomMinimumSize = new(340, 24) };
+            content.AddChild(slider);
+            slider.ValueChanged += number => { heading.Text = title + $" · {number * 100:0}%"; change((float)number); _game.SavePreferences(); };
+        }
+        Slider("Master", _game.Preferences.Master, value => _game.Preferences.Master = value);
+        Slider("Voices", _game.Preferences.Voices, value => _game.Preferences.Voices = value);
+        Slider("Store effects", _game.Preferences.Effects, value => _game.Preferences.Effects = value);
+        Slider("Music", _game.Preferences.Music, value => _game.Preferences.Music = value);
+        popup.Confirmed += () => popup.QueueFree(); popup.Canceled += () => popup.QueueFree();
+        popup.PopupCentered(new(410, 390));
     }
     private MarginContainer Panel(float left, float top, float right, float bottom, bool rightStretch = false, bool rightAnchored = false, bool bottomAnchored = false)
     {
@@ -155,7 +180,7 @@ public partial class StoreHud : CanvasLayer
             _inspector.AddChild(new HSeparator());
             _inspector.AddChild(Label("01  Your shopkeeper", 16)); _inspector.AddChild(Wrap("Click clear floor space to walk, or use I/J/K/L. Press F to follow her and 1/2/3 for different views.", 13));
             _inspector.AddChild(Label("02  Curate a collection", 16)); _inspector.AddChild(Wrap("Each visible object is one item. When it sells, click its empty outline to send her for one replacement.", 13));
-            _inspector.AddChild(Label("03  Open the doors", 16)); _inspector.AddChild(Wrap("She runs the checkout too. Customers wait while she restocks; she returns to serve when her tasks are done.", 13));
+            _inspector.AddChild(Label("03  Open the doors", 16)); _inspector.AddChild(Wrap("Press C or choose Work at checkout to serve. Customers wait until you send her; she stays free for your other tasks.", 13));
             _inspector.AddChild(new HSeparator());
             var nameField = new LineEdit { Text = _game.State.StoreName, PlaceholderText = "Your store name", MaxLength = 32, Editable = _game.Editing };
             nameField.AddThemeFontSizeOverride("font_size", 15); _inspector.AddChild(nameField);
@@ -211,6 +236,7 @@ public partial class StoreHud : CanvasLayer
     public void RefreshStats()
     {
         if (_cash == null) return;
+        _fullscreen.Text = _game.Preferences.Fullscreen ? "Windowed" : "Full screen";
         _keeperStatus.Text = _game.Keeper.Status; _keeperStatus.TooltipText = _game.Keeper.Status;
         _cash.Text = $"${_game.State.Cash:N0}"; _revenue.Text = $"${_game.State.DayRevenue:N0}";
         _day.Text = _game.Open ? $"{_game.State.Day:00}  /  {9 + (int)(_game.State.TradingSeconds / 30) % 12:00}:{(int)(_game.State.TradingSeconds * 2) % 60:00}" : $"{Math.Max(1, _game.State.Day):00}  /  CLOSED";

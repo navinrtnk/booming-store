@@ -374,7 +374,8 @@ def expressions():
     def product(a,b):return np.r_[a[3]*b[:3]+b[3]*a[:3]+np.cross(a[:3],b[:3]),a[3]*b[3]-np.dot(a[:3],b[:3])]
     groups={"Smile":[("MouthLeftPullUp",1),("MouthRightPullUp",1),("LeftCheekUp",.3),("RightCheekUp",.3)],
         "BlinkL":[("LeftUpperLidClosed",1),("LeftLowerLidUp",.25)],
-        "BlinkR":[("RightUpperLidClosed",1),("RightLowerLidUp",.25)],"Talk":[("JawDrop",1)],"Pucker":[("LipsKiss",1)]}
+        "BlinkR":[("RightUpperLidClosed",1),("RightLowerLidUp",.25)],
+        "BrowLift":[("LeftOuterBrowUp",.4),("RightOuterBrowUp",.4),("LeftInnerBrowUp",.2),("RightInnerBrowUp",.2)],"Talk":[("JawDrop",1)],"Pucker":[("LipsKiss",1)]}
     result={}
     for group,units in groups.items():
         angles=defaultdict(lambda:np.zeros(3));totals=defaultdict(float)

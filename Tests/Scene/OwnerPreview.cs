@@ -20,10 +20,13 @@ public static class OwnerPreview
         game.SetSpeed(1); game.Camera.ZoomTo(game.Keeper.Actor.Position);
         for (var i = 0; i < 60; i++) await Frame();
         await Capture("relaxed-owner");
-        game.ToggleOpen(); game.SetSpeed(3);
+        game.Keeper.Actor.React(PersonBeat.Greeting, game.Camera.Position, VoiceLine.Greeting);
+        for (var i = 0; i < 24; i++) await Frame();
+        await Capture("friendly-owner");
+        game.ToggleOpen(); game.Keeper.ServeCheckout(); game.SetSpeed(3);
         for (var i = 0; i < 2400 && game.State.Sales == 0; i++) await Frame();
         var target = game.State.Items.FirstOrDefault(i => i.ForSale && i.Stock == 0);
-        if (target == null) { GD.PushError("Owner preview timed out waiting for a real sale."); game.GetTree().Quit(1); return; }
+        if (target == null) { GD.PushError("Owner preview timed out waiting for a real sale."); await game.QuitCleanly(1); return; }
         game.Keeper.Request(target); var frame = 0; var carryingFrame = -1; var placingFrames = 0;
         for (; frame < 1800 && game.Keeper.Busy; frame++)
         {
@@ -36,6 +39,6 @@ public static class OwnerPreview
         }
         game.SetSpeed(1); game.Camera.Home(); await Frame(); await Capture("store-overview");
         GD.Print($"OWNER_PREVIEW stock={target.Stock} frames={frame} carrying={carryingFrame} status={game.Status}");
-        if (!OS.GetCmdlineUserArgs().Contains("--keep-review-open")) game.GetTree().Quit(target.Stock == 1 ? 0 : 1);
+        if (!OS.GetCmdlineUserArgs().Contains("--keep-review-open")) await game.QuitCleanly(target.Stock == 1 ? 0 : 1);
     }
 }

@@ -11,6 +11,10 @@ public partial class StoreGame : Node3D
     public ShopNavigation Navigation { get; } = new();
     public StoreCamera Camera { get; private set; } = null!;
     public StoreHud Hud { get; private set; } = null!;
+    public GamePreferences Preferences { get; private set; } = new();
+    public StoreAudio Audio { get; private set; } = null!;
+    private Vector2I _windowedSize, _windowedPosition;
+    internal string PreferencesPath => ProjectSettings.GlobalizePath(_automatedChecks ? "res://.godot/test-results/preferences.json" : "user://preferences.json");
     public StoreVisuals Visuals { get; private set; } = null!;
     public List<Shopper> Shoppers { get; } = [];
     public List<Shopper> Queue { get; } = [];
@@ -46,9 +50,11 @@ public partial class StoreGame : Node3D
     private bool _previewValid, _closing, _floorGrid;
     internal string SavePath => ProjectSettings.GlobalizePath(_automatedChecks ? "res://.godot/test-results/store.json" : "user://store.json");
     private bool _automatedChecks = false;
+    private bool _quitting;
 
     public override void _Ready()
     {
+        GetTree().AutoAcceptQuit = false;
         Visuals = new(); Visuals.Plaster.NormalScale = .16f; Visuals.Floor.NormalScale = .25f; Visuals.BuildSurroundings(this);
         _layout = Geometry.Group(this, "Layout"); _floors = Geometry.Group(this, "Floors");
         _walls = Geometry.Group(this, "Walls"); _overlay = Geometry.Group(this, "Placement");
@@ -56,6 +62,9 @@ public partial class StoreGame : Node3D
 #if DEBUG
         _automatedChecks = OS.GetCmdlineUserArgs().Any(arg => arg is "--test" or "--preview-walk" or "--preview-owner");
 #endif
+        Preferences = _automatedChecks ? new() : GamePreferences.Load(PreferencesPath);
+        Audio = new StoreAudio(); AddChild(Audio); Audio.Build(this);
+        if (Preferences.Fullscreen) SetFullscreen(true, false);
         Seed();
         if (!_automatedChecks && File.Exists(SavePath)) TryLoad(false);
         if (State.MigratedFromStackedStock) EnsureSupplyCabinet();
@@ -74,6 +83,20 @@ public partial class StoreGame : Node3D
     private async void ReviewOwner() => await OwnerPreview.Run(this);
     private async void ReviewWalking() => await WalkingPreview.Run(this);
 #endif
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest && IsInsideTree()) _ = QuitCleanly();
+    }
+    public async Task QuitCleanly(int code = 0)
+    {
+        if (_quitting) return;
+        _quitting = true; SetProcess(false); Keeper?.SetProcess(false);
+        foreach (var actor in People) actor.SetProcess(false);
+        Audio?.StopAll();
+        // Godot releases stopped playback on its audio thread; allow its fade-out to drain.
+        await Task.Delay(200);
+        if (IsInsideTree()) GetTree().Quit(code);
+    }
     private void Seed()
     {
         State = new();
@@ -162,6 +185,7 @@ public partial class StoreGame : Node3D
             if (_arrivals.Tick(dt, Shoppers.Count, entranceClear))
             {
                 var s = new Shopper(); AddChild(s); s.Build(this, _profile++); Shoppers.Add(s);
+                Audio.Play(ShopSound.Door, Navigation.Entrance); Keeper.Welcome(s);
             }
         }
         if (_closing && Shoppers.Count == 0)
@@ -177,6 +201,9 @@ public partial class StoreGame : Node3D
     {
         if (e is InputEventKey { Pressed: true, Echo: false } k)
         {
+            if (k.Keycode == Key.F11 || k.Keycode == Key.Enter && k.AltPressed) { SetFullscreen(!Preferences.Fullscreen); return; }
+            if (GetViewport().GuiGetFocusOwner() is LineEdit) return;
+            if (k.Keycode == Key.M) { Preferences.Muted = !Preferences.Muted; SavePreferences(); return; }
             switch (k.Keycode)
             {
                 case Key.Escape: CancelTool(); return;
@@ -223,7 +250,33 @@ public partial class StoreGame : Node3D
         name = name.Trim(); if (!Editing || name.Length is < 1 or > 32 || name.Any(char.IsControl)) return;
         Remember(); State.StoreName = name; RebuildWalls(); Notify($"Welcome to {name}.");
     }
-    public void SetSpeed(float speed) { Speed = speed; Hud.RefreshStats(); }
+    public void SetSpeed(float speed) { Speed = speed; Audio.SetPaused(speed == 0); Hud.RefreshStats(); }
+    public void SetFullscreen(bool fullscreen, bool save = true)
+    {
+        Preferences.Fullscreen = fullscreen;
+        if (DisplayServer.GetName() != "headless")
+        {
+            if (fullscreen)
+            {
+                if (DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Windowed)
+                { _windowedSize = DisplayServer.WindowGetSize(); _windowedPosition = DisplayServer.WindowGetPosition(); }
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+            }
+            else
+            {
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+                if (_windowedSize.X > 0) { DisplayServer.WindowSetSize(_windowedSize); DisplayServer.WindowSetPosition(_windowedPosition); }
+            }
+        }
+        if (save) SavePreferences();
+    }
+    public void SavePreferences()
+    {
+        Audio.ApplyPreferences();
+        try { Preferences.Save(PreferencesPath); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Notify("Couldn't save preferences", e.Message); }
+        Hud?.RefreshStats();
+    }
     public void ToggleWalls() { CutWalls = !CutWalls; RebuildWalls(); }
     public void SetFloor(int index) { FloorStyle = index; SetTool("floor"); }
     public void SetColor(int color)
@@ -403,7 +456,7 @@ public partial class StoreGame : Node3D
     public void ToggleOpen()
     {
         if (Open)
-        { Open = false; _closing = true; if (Speed == 0) Speed = 1; Notify("Closing time", "Shoppers will finish their purchases before editing resumes."); return; }
+        { Open = false; _closing = true; if (Speed == 0) SetSpeed(1); Notify("Closing time", "No new arrivals. Press C when you want to serve the remaining line."); return; }
         if (!CanOpen) { Notify("Your last shoppers are still finishing up."); return; }
         Navigation.Rebuild(State);
         if (!Navigation.HasEntrance) { Notify("Add an accessible doorway or gap in an exterior wall."); return; }
@@ -418,7 +471,7 @@ public partial class StoreGame : Node3D
         if (reachable == 0) { Notify("Stock at least one accessible object marked for sale."); return; }
         CancelTool(); Selected = null; _history.Clear();
         State.Day++; State.DayRevenue = 0; State.DayCost = 0; State.DaySales = 0; State.TradingSeconds = 0;
-        _trading = new(State); Open = true; _arrivals.Reset(); Speed = 1; Keeper.EnableAutomaticCheckout();
+        _trading = new(State); Open = true; _arrivals.Reset(); SetSpeed(1);
         Notify($"Day {State.Day} · Open for business", reachable < available.Length ? $"{available.Length - reachable} product(s) cannot be reached. Review the layout after closing." : "Customers are on their way. Prices influence their buying decisions."); Hud.RefreshInspector();
     }
     public int Reserved(StoreItem item) => _trading?.Reserved(item) ?? 0;
@@ -443,7 +496,8 @@ public partial class StoreGame : Node3D
         var receipt = _trading.Checkout(shopper.GetInstanceId());
         if (receipt == null) return false;
         var (item, price) = receipt;
-        StockChanged(item);
+        StockChanged(item); Audio.Play(ShopSound.Checkout, Checkout!.Position);
+        Keeper.ThankCustomer(shopper);
         Notify($"Sold {item.Product.Name} · ${price:0}", $"${price - item.Product.Cost:0} gross profit · {item.Stock} left in stock"); Hud.RefreshInspector(); return true;
     }
     public void Save(bool announce = true)
@@ -470,7 +524,7 @@ public partial class StoreGame : Node3D
     private void ApplyLoaded(StoreState loaded)
     {
         foreach (var s in Shoppers) s.QueueFree(); Shoppers.Clear(); Queue.Clear();
-        State = loaded; _trading = new(State); Open = false; _closing = false; Speed = 1; Selected = null; _history.Clear();
+        State = loaded; _trading = new(State); Open = false; _closing = false; Speed = 1; Audio?.SetPaused(false); Selected = null; _history.Clear();
         if (Hud != null) { if (State.MigratedFromStackedStock) EnsureSupplyCabinet(); CancelTool(); Rebuild(); Keeper.BindState(); }
     }
     private StoreItem? Pick(Vector2 screen)

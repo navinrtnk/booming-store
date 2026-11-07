@@ -4,6 +4,7 @@ bin/
 obj/
 builds/
 .tools/
+.retired-assets/
 __pycache__/
 *.pyc
 *.user

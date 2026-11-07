@@ -1,0 +1,258 @@
+{
+  "description": "Original boutique effects and music; fictional vocal phrases synthesized locally with Kokoro. No game recordings or sampled dialogue.",
+  "generator": "scripts/generate_audio.py",
+  "model_license": "Apache-2.0",
+  "model_card": "https://huggingface.co/hexgrad/Kokoro-82M",
+  "development_inputs": [
+    {
+      "file": "kokoro-v1.0.int8.onnx",
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.int8.onnx",
+      "sha256": "ae315a79b623f244700e4afb9246c46a26066782e049ba174bf3ba433970ee9c",
+      "bytes": 114119327
+    },
+    {
+      "file": "voices-v1.0.bin",
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin",
+      "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+      "bytes": 28214398
+    }
+  ],
+  "outputs": [
+    {
+      "file": "door.wav",
+      "sha256": "d40c871573b8dadc1c3416da56dfbb15dbdf60cb196aca63db2a5c0774073ebd",
+      "seconds": 0.9,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "checkout.wav",
+      "sha256": "f213ca0493b727027155c865972e10e5f42368b93f0179932b45da78e1336bba",
+      "seconds": 1.1,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "pickup.wav",
+      "sha256": "ecafdc72e92675dd5820ec713ac9c002f242c9c1f8492fb72ce743486ae27ee8",
+      "seconds": 0.75,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "place.wav",
+      "sha256": "2a144ad4b6dd628c8c78cb643500d4b0bf6f56d1b4a4db9b608f2c50bec13fa8",
+      "seconds": 0.65,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "step_0.wav",
+      "sha256": "0d8748c3186e332c225cac6aa0f39f6d0097e57ea1fc929de7014ef19b31177d",
+      "seconds": 0.16,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "step_1.wav",
+      "sha256": "fbb051d5b2c1d22dd1f68c33d02938ade94b9becea103e517b6098ae95211e02",
+      "seconds": 0.16,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "step_2.wav",
+      "sha256": "b6243cd0b717a83ff158cf3f8561bf7293caa6f1b56354e3c304acf07c74735a",
+      "seconds": 0.16,
+      "sample_rate": 24000,
+      "channels": 1
+    },
+    {
+      "file": "boutique_theme.wav",
+      "sha256": "d9955edc7cac299a0b897b7358748e8caa21fcb5073a6c435322660a72d96d0d",
+      "seconds": 43.63638,
+      "sample_rate": 24000,
+      "channels": 2
+    },
+    {
+      "file": "female_greeting_0.wav",
+      "sha256": "9013ecf38cf772538e5a613e11dbd5274ec242d26d6388143a568636eb02583b",
+      "seconds": 1.10983,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Neya! Poma leya?",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_greeting_1.wav",
+      "sha256": "92c8be799444afa9f10b5e5c887a1d80b4b1cf9ca0097c818879072e6a735b9f",
+      "seconds": 1.359,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Oh! Tali meya, nava!",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_browse_0.wav",
+      "sha256": "6b3119fd06e832f92d33625bf3d8ef1d2ed72abcc34238544b9639c0d3c8a8b9",
+      "seconds": 1.43483,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Mmm... lemi tova!",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_browse_1.wav",
+      "sha256": "4cfdb97670c3417cc777dab76bf301baa6c7f3f6c6a6e0d29650e5ac7edccd50",
+      "seconds": 0.963,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Ooh, keva lumay?",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_agree_0.wav",
+      "sha256": "2b3cb5dbcef29a16f04ff2748ebb9db8f13953fef400282fae1d3aa010c46115",
+      "seconds": 1.15054,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Aya! Peli nova!",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_agree_1.wav",
+      "sha256": "abe26dc6ff6ea077439941fafa31d621babe823b1b55094b9ae0c206bd429691",
+      "seconds": 0.94537,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Meya, tevi la!",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_thanks_0.wav",
+      "sha256": "b182b883eaca763539a9363b3dbf05e83bfd7ef38714a56d9bb0119a4b1c9848",
+      "seconds": 1.18592,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Ah, nevi! Luma ley!",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_thanks_1.wav",
+      "sha256": "b3f6fb08a75abf643df0de8f84d346c61e38f8796d581d34fe8c54de6aa7fff1",
+      "seconds": 1.23275,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Neya, pomi! Teya!",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_work_0.wav",
+      "sha256": "1c6d134a600ddc4012e1bb0211026244ccbff101b7339ce1bbdc78d33105c521",
+      "seconds": 1.49675,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Mhm! Kevi naya.",
+      "voice": "af_heart"
+    },
+    {
+      "file": "female_work_1.wav",
+      "sha256": "5ac921a2e7c188a75cf5423a0ed199131339489577cd3fa6e67de90f7bb7f794",
+      "seconds": 1.09371,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Opa! Lemi ta.",
+      "voice": "af_heart"
+    },
+    {
+      "file": "male_greeting_0.wav",
+      "sha256": "8f0e216bcd5d904f82d5d7fcb9e5b585e835482fbc86e795dda642f2f69698fe",
+      "seconds": 1.26704,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Neya! Poma leya?",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_greeting_1.wav",
+      "sha256": "31466b22ed7291862f85348f84ee6daf8052387dc970c6c0268be505a114dda9",
+      "seconds": 1.40517,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Oh! Tali meya, nava!",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_browse_0.wav",
+      "sha256": "060848b6a7e8242a47995a34b91ef982e038dbe41394da17f0284220e62a3f60",
+      "seconds": 1.55933,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Mmm... lemi tova!",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_browse_1.wav",
+      "sha256": "d14543e7dbf9e735532df4bf0e8236d5de1de4ad81df67a813383755187c1691",
+      "seconds": 1.03817,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Ooh, keva lumay?",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_agree_0.wav",
+      "sha256": "9aeab3e0a65b9e653a2a63cfdec80dbd75f607e68b606fec2146d480f5dfc796",
+      "seconds": 1.20404,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Aya! Peli nova!",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_agree_1.wav",
+      "sha256": "cf7f7c8088269a05ca360bfd09c2f3523cf5cb9267390ce16086688f5cb5b784",
+      "seconds": 1.12029,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Meya, tevi la!",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_thanks_0.wav",
+      "sha256": "75b59575b48adfd9719bc93f28e2e7306de67f67ea93b59aec2aed9ef35cbc7f",
+      "seconds": 1.38558,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Ah, nevi! Luma ley!",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_thanks_1.wav",
+      "sha256": "69d0f00b7a93a5f7fbffe63b709b08979ee832d5f4ae5c22163b4451eb1d2778",
+      "seconds": 1.31496,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Neya, pomi! Teya!",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_work_0.wav",
+      "sha256": "d54ab7ca768b52f5dd6a27d248efa6befae107afcfa263fb7181f9cd96d2fb5b",
+      "seconds": 1.54742,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Mhm! Kevi naya.",
+      "voice": "am_michael"
+    },
+    {
+      "file": "male_work_1.wav",
+      "sha256": "dfe63001eef9052d7c48a7279702004ea9ec1f4c968cb20f01d73dba82e6e8c1",
+      "seconds": 1.15667,
+      "sample_rate": 24000,
+      "channels": 1,
+      "phrase": "Opa! Lemi ta.",
+      "voice": "am_michael"
+    }
+  ]
+}

@@ -34,7 +34,9 @@ public partial class Shopper : PersonActor
             switch (State)
             {
                 case Activity.Arriving: if (_timer <= 0) BrowseNext(); break;
-                case Activity.Walking: State = Activity.Browsing; _timer = Between(8, 14); SayText = "A closer look…"; break;
+                case Activity.Walking:
+                    State = Activity.Browsing; _timer = Between(8, 14); SayText = "A closer look…";
+                    React(PersonBeat.Admire, Choice?.Position + Vector3.Up * .4f, VoiceLine.Browse); break;
                 case Activity.Browsing:
                     if (Choice != null) Face(Choice.Position, dt);
                     if (_timer <= 0) Decide(); break;
@@ -43,7 +45,8 @@ public partial class Shopper : PersonActor
                     var index = _game.Queue.IndexOf(this);
                     var spot = _game.QueueSpot(Math.Max(0, index));
                     if (Position.DistanceTo(spot) > .2f) WalkTo(spot);
-                    else if (index == 0 && _game.Keeper.CanServe(this)) { State = Activity.Paying; _timer = Between(3.5f, 5.5f); SayText = "Checking out"; }
+                    else if (index == 0 && _game.Keeper.CanServe(this))
+                    { State = Activity.Paying; _timer = Between(3.5f, 5.5f); SayText = "Checking out"; _game.Keeper.BeginCheckout(this); }
                     else if (index == 0) SayText = "Waiting for you";
                     break;
                 case Activity.Paying:
@@ -60,7 +63,7 @@ public partial class Shopper : PersonActor
             }
         AttentionTarget = State == Activity.Browsing ? Choice?.Position + Vector3.Up * .35f : null;
         GestureAmount = State == Activity.Browsing && _timer < 3 && _timer > .7f ? Mathf.Sin((_timer - .7f) / 2.3f * Mathf.Pi) * .55f : 0;
-        Animate(dt, motion);
+        Animate(dt, motion, Mathf.Min((float)delta, .1f));
     }
     private static float Between(float minimum, float maximum) => Mathf.Lerp(minimum, maximum, GD.Randf());
     private void BrowseNext()
@@ -88,7 +91,7 @@ public partial class Shopper : PersonActor
         if (GD.Randf() < chance)
         {
             if (!_game.JoinQueue(this)) { LookAround(); return; }
-            State = Activity.Queueing; SayText = "I'll take it";
+            State = Activity.Queueing; SayText = "I'll take it"; React(PersonBeat.Chat, _game.Keeper.Actor.Position, VoiceLine.Agree);
             if (!WalkTo(_game.QueueSpot(_game.Queue.Count - 1))) { _game.LeaveQueue(this); Leave(); }
         }
         else if (!finalChoice && _viewed.Count < 4) LookAround();

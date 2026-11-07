@@ -36,6 +36,6 @@ public static class WalkingPreview
         await game.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         game.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(folder, "store-overview.png"));
         GD.Print($"WALK_PREVIEW frames={walkingFrames} captures={saved}");
-        game.GetTree().Quit();
+        await game.QuitCleanly();
     }
 }
