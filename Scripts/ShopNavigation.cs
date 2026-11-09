@@ -69,8 +69,13 @@ public sealed class ShopNavigation
         HasEntrance = entrance != null; Entrance = entrance ?? new(0, 0, 4.65f);
     }
 
-    public bool CanStand(Vector3 point) => InLot(point) && !_obstacles.Any(r =>
-        point.X > r.Position.X + .0001f && point.X < r.End.X - .0001f && point.Z > r.Position.Y + .0001f && point.Z < r.End.Y - .0001f);
+    public bool CanStand(Vector3 point)
+    {
+        if (!InLot(point)) return false;
+        foreach (var r in _obstacles)
+            if (point.X > r.Position.X + .0001f && point.X < r.End.X - .0001f && point.Z > r.Position.Y + .0001f && point.Z < r.End.Y - .0001f) return false;
+        return true;
+    }
 
     /// <summary>Sweep the person's footprint along an entire segment, including walls and furniture.</summary>
     public bool IsSegmentClear(Vector3 from, Vector3 to)

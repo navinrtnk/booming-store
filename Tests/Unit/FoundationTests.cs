@@ -99,7 +99,7 @@ public class TradingTests
     {
         var item = Fixtures.Item(); var state = Fixtures.Shop(item); var trade = new StoreTrading(state);
         Assert.True(trade.TryReserve(1, item));
-        Assert.Equal(9000m, state.Cash); Assert.Equal(1, item.Stock); Assert.Equal(1, trade.Reserved(item));
+        Assert.Equal(9000m, state.Cash); Assert.Equal(0, item.Stock); Assert.Equal(1, trade.Reserved(item));
         item.Price = 99;
         Assert.Equal(38m, trade.Checkout(1)!.Price);
         Assert.Equal(9038m, state.Cash); Assert.Equal(0, item.Stock);
@@ -115,7 +115,7 @@ public class TradingTests
         var state = Fixtures.Shop(item); var trade = new StoreTrading(state);
         Assert.True(trade.TryReserve(1, item)); Assert.False(trade.TryReserve(2, item));
         Assert.False(trade.TryReserve(1, item));
-        trade.Cancel(1); trade.Cancel(1);
+        trade.Cancel(1); trade.Cancel(1); _ = trade.ProcessReturns().ToArray();
         Assert.Equal(0, trade.Reserved(item)); Assert.Equal(9000m, state.Cash);
         Assert.True(trade.TryReserve(2, item)); Assert.NotNull(trade.Checkout(2));
         Assert.False(trade.TryReserve(3, item)); Assert.Equal(0, item.Stock);

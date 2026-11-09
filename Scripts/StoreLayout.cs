@@ -12,12 +12,13 @@ public static class StoreLayout
             item.Rotation is < 0 or >= 360 || item.Rotation % 90 != 0 ||
             (ignore == 0 && (state.Items.Count >= 600 || state.NextId == int.MaxValue)) ||
             (item.ParentId == 0 && Math.Abs(item.Y) > .001f)) return false;
+        if (item.Kind == "checkout" && state.Items.Count(i => i.Kind == "checkout" && i.Id != ignore) >= 2) return false;
         var h = item.Footprint / 2;
         if (Mathf.Abs(item.X) + h.X > 5.9f || Mathf.Abs(item.Z) + h.Y > 4.9f) return false;
         if (item.ParentId != 0)
         {
             var parent = state.Items.FirstOrDefault(i => i.Id == item.ParentId);
-            if (parent == null || parent.ParentId != 0 || parent.Product.Surface <= 0 || Math.Abs(item.Y - parent.Product.Surface) > .001f) return false;
+            if (parent == null || parent.ParentId != 0 || parent.Product.Surface <= 0 || !parent.Product.FitsLevel(item.Y, item.Product.Height)) return false;
             var bounds = parent.Footprint / 2;
             if (Mathf.Abs(item.X - parent.X) + h.X > bounds.X || Mathf.Abs(item.Z - parent.Z) + h.Y > bounds.Y) return false;
         }

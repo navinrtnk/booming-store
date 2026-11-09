@@ -8,6 +8,7 @@ public static class WalkingPreview
 {
     public static async Task Run(StoreGame game)
     {
+        game.FurnishReviewStore();
         GD.Seed(31); game.ToggleOpen(); game.SetSpeed(3);
         var folder = ProjectSettings.GlobalizePath("res://.tools/walk-review"); Directory.CreateDirectory(folder);
         var walkingFrames = 0; var saved = 0; var startFrame = -1; var movieFrame = 0;

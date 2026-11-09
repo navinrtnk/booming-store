@@ -11,6 +11,8 @@ public partial class StoreGame : Node3D
     public ShopNavigation Navigation { get; } = new();
     public StoreCamera Camera { get; private set; } = null!;
     public StoreHud Hud { get; private set; } = null!;
+    public CheckoutCoordinator Registers { get; private set; } = null!;
+    public CatalogPictures Pictures { get; private set; } = null!;
     public GamePreferences Preferences { get; private set; } = new();
     public StoreAudio Audio { get; private set; } = null!;
     private Vector2I _windowedSize, _windowedPosition;
@@ -20,13 +22,24 @@ public partial class StoreGame : Node3D
     public List<Shopper> Queue { get; } = [];
     public bool Open { get; private set; }
     public bool CanOpen => !Open && Shoppers.Count == 0;
-    public bool Editing => CanOpen && Keeper?.Busy != true;
+    public bool Editing => CanOpen && Keeper?.Busy != true && Staff?.Busy != true;
     public Shopkeeper Keeper { get; private set; } = null!;
-    public IEnumerable<PersonActor> People => Keeper == null ? Shoppers : Shoppers.Cast<PersonActor>().Append(Keeper.Actor);
+    public EmployeeManager Staff { get; private set; } = null!;
+    public IEnumerable<PersonActor> People
+    {
+        get
+        {
+            foreach (var shopper in Shoppers) yield return shopper;
+            if (Staff != null) foreach (var employee in Staff.Actors) yield return employee;
+            if (Keeper != null) yield return Keeper.Actor;
+        }
+    }
     public float Speed { get; private set; } = 1;
     public bool CutWalls { get; private set; } = true;
     public string Tool { get; private set; } = "select";
-    public string Category { get; set; } = "Objects";
+    public string Category { get; set; } = "TVs";
+    public int ShelfLevel { get; private set; }
+    public void CycleShelfLevel() { ShelfLevel = (ShelfLevel + 1) % 3; _previewState = null; Notify($"Shelf deck {ShelfLevel + 1}", "B cycles lower / middle / upper decks while placing merchandise."); }
     public int PaintColor { get; private set; }
     public int FloorStyle { get; private set; }
     public StoreItem? Selected { get; private set; }
@@ -51,6 +64,7 @@ public partial class StoreGame : Node3D
     internal string SavePath => ProjectSettings.GlobalizePath(_automatedChecks ? "res://.godot/test-results/store.json" : "user://store.json");
     private bool _automatedChecks = false;
     private bool _quitting;
+    private double _autosaveSeconds;
 
     public override void _Ready()
     {
@@ -65,11 +79,13 @@ public partial class StoreGame : Node3D
         Preferences = _automatedChecks ? new() : GamePreferences.Load(PreferencesPath);
         Audio = new StoreAudio(); AddChild(Audio); Audio.Build(this);
         if (Preferences.Fullscreen) SetFullscreen(true, false);
-        Seed();
+        Seed(); _trading = new(State); Registers = new CheckoutCoordinator(this);
         if (!_automatedChecks && File.Exists(SavePath)) TryLoad(false);
         if (State.MigratedFromStackedStock) EnsureSupplyCabinet();
         Rebuild();
         Keeper = new Shopkeeper(); AddChild(Keeper); Keeper.Build(this);
+        Staff = new EmployeeManager(this); Staff.Bind();
+        Pictures = new CatalogPictures(); AddChild(Pictures); Pictures.Build(Visuals);
         Rebuild(); Hud = new StoreHud(); AddChild(Hud); Hud.Build(this);
         SetProcess(true);
 #if DEBUG
@@ -90,7 +106,7 @@ public partial class StoreGame : Node3D
     public async Task QuitCleanly(int code = 0)
     {
         if (_quitting) return;
-        _quitting = true; SetProcess(false); Keeper?.SetProcess(false);
+        _quitting = true; if (!_automatedChecks && Hud != null) Save(false); SetProcess(false); Keeper?.SetProcess(false);
         foreach (var actor in People) actor.SetProcess(false);
         Audio?.StopAll();
         // Godot releases stopped playback on its audio thread; allow its fade-out to drain.
@@ -99,7 +115,7 @@ public partial class StoreGame : Node3D
     }
     private void Seed()
     {
-        State = new();
+        State = new() { KeeperX = 0, KeeperZ = 2.5f };
         for (var x = -6; x < 6; x++)
         {
             State.Walls.Add(new() { X = x, Z = -5, AlongX = true });
@@ -107,6 +123,11 @@ public partial class StoreGame : Node3D
         }
         for (var z = -5; z < 5; z++)
             foreach (var x in new[] { -6, 6 }) State.Walls.Add(new() { X = x, Z = z, Kind = z >= 1 ? "window" : "wall" });
+        State.Cash = 10000;
+    }
+#if DEBUG
+    internal void FurnishReviewStore()
+    {
         StoreItem Add(string kind, float x, float z, int color = 0, int rotation = 0, int parent = 0)
         {
             var p = Catalog.Get(kind); var support = State.Items.FirstOrDefault(i => i.Id == parent);
@@ -125,7 +146,9 @@ public partial class StoreGame : Node3D
         Add("rug", 3, 1.5f, 4); Add("chair", 3.3f, 1.5f, 2); Add("lamp", 4.45f, 1.1f);
         Add("plant", 4.7f, -3.7f, 1); Add("plant", -4.8f, 3.7f, 0);
         State.Cash = 9000;
+        _trading = new(State); Rebuild(); Keeper.BindState();
     }
+#endif
     private void EnsureSupplyCabinet()
     {
         if (State.Items.Any(i => i.Kind == "stockroom") || State.Items.Count >= 600) return;
@@ -139,7 +162,10 @@ public partial class StoreGame : Node3D
     }
     public void ClearEditHistory() => _history.Clear();
     public void StockChanged(StoreItem item)
-    { _history.Clear(); Navigation.Rebuild(State); RefreshItem(item); }
+    {
+        if (item.Stock == 1 && State.NextKeeperCommand is { Kind: KeeperCommandKind.Restock } next && next.ItemId == item.Id) State.NextKeeperCommand = null;
+        _history.Clear(); Navigation.Rebuild(State); RefreshItem(item);
+    }
     private static void Clear(Node parent)
     { foreach (var child in parent.GetChildren()) { parent.RemoveChild(child); child.QueueFree(); } }
     private void Rebuild()
@@ -168,21 +194,24 @@ public partial class StoreGame : Node3D
         {
             Geometry.RoundedBox(_walls, "StoreSign", new(3.5f, .84f, .045f), new(0, 2.02f, -4.9f), Visuals.Dark, .025f);
             Geometry.Text(_walls, "StoreName", State.StoreName.ToUpperInvariant(), new(0, 2.13f, -4.865f), .0044f, new("e6d8b8"), 64);
-            Geometry.Text(_walls, "StoreSubtitle", "O B J E C T S   /   L I V I N G", new(0, 1.82f, -4.86f), .0013f, new("b8c4b5"), 40);
+            Geometry.Text(_walls, "StoreSubtitle", "E L E C T R O N I C S   /   H O M E   T E C H", new(0, 1.82f, -4.86f), .0013f, new("b8c4b5"), 40);
         }
     }
     public override void _Process(double delta)
     {
+        if (Speed > 0) { _autosaveSeconds += delta; if (_autosaveSeconds >= 60) { _autosaveSeconds = 0; Save(false); } }
+        if (Speed > 0) State.WorldHours += Math.Min(delta, .1) * Speed / StoreClock.SecondsPerHour;
+        ProcessReturns(); Staff.Tick((float)Math.Min(delta, .1) * Speed);
         Camera.OverUi = Hud.IsOverUi();
         if (_floorGrid != (Tool != "select" && Editing))
         { _floorGrid = Tool != "select" && Editing; Clear(_floors); Visuals.Floors(_floors, State, _floorGrid); }
         var dt = Mathf.Min((float)delta, .1f) * Speed;
-        Shoppers.RemoveAll(s => s.Finished);
+        Shoppers.RemoveAll(s => { if (!s.Finished) return false; StoreClock.RecordDeparture(State, s.Morale.Mood); return true; });
         if (Open)
         {
             State.TradingSeconds += dt;
             var entranceClear = People.All(s => s.Position.DistanceTo(Navigation.Entrance) > .9f);
-            if (_arrivals.Tick(dt, Shoppers.Count, entranceClear))
+            if (_arrivals.Tick(dt, Shoppers.Count, entranceClear, StoreClock.Hour(State), StoreClock.Reputation(State)))
             {
                 var s = new Shopper(); AddChild(s); s.Build(this, _profile++); Shoppers.Add(s);
                 Audio.Play(ShopSound.Door, Navigation.Entrance); Keeper.Welcome(s);
@@ -203,11 +232,13 @@ public partial class StoreGame : Node3D
         {
             if (k.Keycode == Key.F11 || k.Keycode == Key.Enter && k.AltPressed) { SetFullscreen(!Preferences.Fullscreen); return; }
             if (GetViewport().GuiGetFocusOwner() is LineEdit) return;
+            if (k.Keycode == Key.Tab) { Hud.ToggleChrome(); return; }
             if (k.Keycode == Key.M) { Preferences.Muted = !Preferences.Muted; SavePreferences(); return; }
             switch (k.Keycode)
             {
                 case Key.Escape: CancelTool(); return;
                 case Key.R: Rotate(); return;
+                case Key.B: CycleShelfLevel(); return;
                 case Key.Delete: RemoveSelected(); return;
                 case Key.Space: SetSpeed(Speed == 0 ? 1 : 0); return;
                 case Key.Home: Camera.Home(); return;
@@ -341,14 +372,16 @@ public partial class StoreGame : Node3D
         {
             _ghost = _moving != 0 ? State.Items.First(i => i.Id == _moving).Copy() : new StoreItem { Kind = _placing!.Id, Color = PaintColor, ForSale = _placing.Merchandise, Stock = 1, Price = _placing.Price };
             var p = point.Value; _ghost.ParentId = 0; _ghost.Y = 0;
-            if (_ghost.Kind is "vase" or "candle" or "books" or "bowl")
+            if (_ghost.Product.Merchandise || _ghost.Kind is "vase" or "candle" or "books" or "bowl")
                 foreach (var support in State.Items.Where(i => i.Product.Surface > 0 && i.Id != _moving))
                 {
-                    var surfacePoint = Camera.Ground(GetViewport().GetMousePosition(), support.Product.Surface);
+                    var levels = support.Product.Levels ?? [support.Product.Surface];
+                    var surface = levels[Math.Min(ShelfLevel, levels.Length - 1)];
+                    var surfacePoint = Camera.Ground(GetViewport().GetMousePosition(), surface);
                     if (surfacePoint == null) continue;
                     var h = support.Footprint / 2;
                     if (Mathf.Abs(surfacePoint.Value.X - support.X) < h.X && Mathf.Abs(surfacePoint.Value.Z - support.Z) < h.Y)
-                    { p = surfacePoint.Value; _ghost.Y = support.Product.Surface; _ghost.ParentId = support.Id; break; }
+                    { p = surfacePoint.Value; _ghost.Y = surface; _ghost.ParentId = support.Id; break; }
                 }
             var snap = _ghost.ParentId != 0 ? .1f : .25f;
             _ghost.X = Mathf.Snapped(p.X, snap); _ghost.Z = Mathf.Snapped(p.Z, snap); _ghost.Rotation = _rotation;
@@ -385,7 +418,7 @@ public partial class StoreGame : Node3D
         if (!Editing || Selected == null) return;
         var removed = State.Items.Where(i => i.Id == Selected.Id || i.ParentId == Selected.Id).ToArray();
         var refund = decimal.Round(removed.Sum(i => i.Product.Cost * i.Stock) * .7m, 0);
-        Remember(); foreach (var item in removed) State.Items.Remove(item); State.Cash += refund;
+        Remember(); foreach (var item in removed) { State.Cash += State.Returns.Count(r => r.ItemId == item.Id) * item.Product.Cost * .7m; State.Returns.RemoveAll(r => r.ItemId == item.Id); State.Items.Remove(item); } if (!State.Items.Any(i => i.Id == State.KeeperRegisterId)) State.KeeperRegisterId = 0; Staff.LayoutChanged(); State.Cash += refund;
         Selected = null; CancelTool(); Rebuild(); Notify($"Removed object and supported items · ${refund:0} recovered");
     }
     public void ToggleSale()
@@ -396,7 +429,7 @@ public partial class StoreGame : Node3D
         Remember(); Selected.ForSale = !Selected.ForSale; RefreshItem(Selected);
     }
     public void ChangePrice(decimal amount)
-    { if (!Editing || Selected == null) return; Remember(); Selected.Price = Math.Clamp(Selected.Price + amount, 1, 99999); RefreshItem(Selected); }
+    { if (!Editing || Selected == null || Selected.Used) return; Remember(); Selected.Price = Math.Clamp(Selected.Price + amount, 1, 99999); RefreshItem(Selected); }
     private List<StoreWall> WallStroke(Vector3 a, Vector3 b)
     {
         var along = Mathf.Abs(a.X - b.X) >= Mathf.Abs(a.Z - b.Z);
@@ -451,7 +484,7 @@ public partial class StoreGame : Node3D
         var keeperPosition = Keeper.Actor.Position;
         State = redo ? _history.Redo(State) : _history.Undo(State);
         State.KeeperX = keeperPosition.X; State.KeeperZ = keeperPosition.Z;
-        Selected = null; CancelTool(); Rebuild(); Keeper.BindState(); Notify(redo ? "Redid last edit" : "Undid last edit");
+        _trading = new(State); Selected = null; CancelTool(); Rebuild(); Keeper.BindState(); Staff.Bind(); Notify(redo ? "Redid last edit" : "Undid last edit");
     }
     public void ToggleOpen()
     {
@@ -460,54 +493,104 @@ public partial class StoreGame : Node3D
         if (!CanOpen) { Notify("Your last shoppers are still finishing up."); return; }
         Navigation.Rebuild(State);
         if (!Navigation.HasEntrance) { Notify("Add an accessible doorway or gap in an exterior wall."); return; }
-        if (Checkout == null || State.Items.Count(i => i.Kind == "checkout") != 1)
-        { Notify("The store needs exactly one checkout counter, kept as a fixture."); return; }
-        if (Navigation.Path(Navigation.Entrance, QueueSpot(0)) == null)
+        if (Checkout == null || State.Items.Count(i => i.Kind == "checkout") is < 1 or > 2)
+        { Notify("Place one or two checkout counters, kept as fixtures."); return; }
+        if (!Registers.Registers.Any(r => Navigation.Path(Navigation.Entrance, CheckoutCoordinator.LineSpot(r, 0)) != null))
         { Notify("The checkout is blocked. Leave a clear route from the entrance."); return; }
-        if (CashierSpot is not { } service || !Navigation.CanReach(Keeper.Actor.Position, service))
+        if (!Registers.Registers.Any(r => Navigation.CanReach(Keeper.Actor.Position, CheckoutCoordinator.StaffSpot(r))))
         { Notify("Leave a clear route behind the counter so she can serve customers."); return; }
         var available = State.Items.Where(i => i.ForSale && i.Stock > 0).ToArray();
         var reachable = available.Count(i => Navigation.Approach(i, Navigation.Entrance) != null);
         if (reachable == 0) { Notify("Stock at least one accessible object marked for sale."); return; }
         CancelTool(); Selected = null; _history.Clear();
-        State.Day++; State.DayRevenue = 0; State.DayCost = 0; State.DaySales = 0; State.TradingSeconds = 0;
+        State.Day++; State.DayWages = 0; State.DayRevenue = 0; State.DayCost = 0; State.DaySales = 0; State.TradingSeconds = 0;
         _trading = new(State); Open = true; _arrivals.Reset(); SetSpeed(1);
         Notify($"Day {State.Day} · Open for business", reachable < available.Length ? $"{available.Length - reachable} product(s) cannot be reached. Review the layout after closing." : "Customers are on their way. Prices influence their buying decisions."); Hud.RefreshInspector();
     }
+    public void Abandon(Shopper shopper)
+    { shopper.HasBasket = false; _trading.Cancel(shopper.GetInstanceId(), true); Queue.Remove(shopper); Registers.RefreshRoutes(); ProcessReturns(); Notify("Customer left disappointed", "Their item returns at wholesale cost with no profit."); }
+    private void ProcessReturns()
+    {
+        if (State.Returns.Count == 0) return;
+        foreach (var item in _trading.ProcessReturns(i => i.ParentId != 0 || i.Kind == "rug" || !People.Any(p => Math.Abs(p.Position.X - i.X) < i.Footprint.X / 2 + .2f && Math.Abs(p.Position.Z - i.Z) < i.Footprint.Y / 2 + .2f))) StockChanged(item);
+    }
     public int Reserved(StoreItem item) => _trading?.Reserved(item) ?? 0;
+    public int CartCount(Shopper shopper) => _trading.CartCount(shopper.GetInstanceId());
+    public decimal CartValue(Shopper shopper) => _trading.CartValue(shopper.GetInstanceId());
+    public bool TakeItem(Shopper shopper, StoreItem item)
+    {
+        if (!_trading.TryReserve(shopper.GetInstanceId(), item)) return false;
+        shopper.HasBasket = true; StockChanged(item); return true;
+    }
     public bool JoinQueue(Shopper shopper)
     {
-        if (shopper.Choice == null || !_trading.TryReserve(shopper.GetInstanceId(), shopper.Choice)) return false;
-        Queue.Add(shopper); return true;
+        if (CartCount(shopper) == 0 && (shopper.Choice == null || !TakeItem(shopper, shopper.Choice))) return false;
+        if (!Queue.Contains(shopper)) { Queue.Add(shopper); Registers.Assign(shopper); } return true;
     }
     public void LeaveQueue(Shopper shopper)
     {
-        Queue.Remove(shopper); _trading?.Cancel(shopper.GetInstanceId());
+        shopper.HasBasket = false; Queue.Remove(shopper); Registers.RefreshRoutes(); _trading?.Cancel(shopper.GetInstanceId()); if (_trading != null) ProcessReturns();
     }
     public Vector3 QueueSpot(int index)
     {
         if (Checkout == null) return Navigation.Entrance;
         return Checkout.Position + new Vector3(0, 0, 1.1f + index * .68f).Rotated(Vector3.Up, Mathf.DegToRad(Checkout.Rotation));
     }
-    public Vector3? CashierSpot => Checkout is { } counter ? counter.Position + new Vector3(0, 0, -.95f).Rotated(Vector3.Up, Mathf.DegToRad(counter.Rotation)) : null;
+    public Vector3 QueueSpot(Shopper shopper) => Registers.Spot(shopper);
+    public StoreItem? RegisterFor(Shopper shopper) => Registers.Find(shopper.RegisterId);
+    public Vector3? CashierSpot => (Registers.Find(State.KeeperRegisterId) ?? Checkout) is { } counter ? CheckoutCoordinator.StaffSpot(counter) : null;
+    public bool CanServe(Shopper shopper) => Keeper.CanServe(shopper) || Staff.CanServe(shopper);
+    public void BeginPayment(Shopper shopper)
+    {
+        var actor = Keeper.CanServe(shopper) ? Keeper.Actor : Staff.CashierFor(shopper);
+        actor?.React(PersonBeat.Chat, shopper.Position + Vector3.Up * 1.4f, VoiceLine.Agree);
+        shopper.React(PersonBeat.Chat, actor?.Position + Vector3.Up * 1.4f, VoiceLine.Agree, .65f);
+    }
     public bool CompleteSale(Shopper shopper)
     {
-        if (!Keeper.CanServe(shopper)) return false;
+        if (!CanServe(shopper)) return false;
         var receipt = _trading.Checkout(shopper.GetInstanceId());
         if (receipt == null) return false;
         var (item, price) = receipt;
-        StockChanged(item); Audio.Play(ShopSound.Checkout, Checkout!.Position);
-        Keeper.ThankCustomer(shopper);
-        Notify($"Sold {item.Product.Name} · ${price:0}", $"${price - item.Product.Cost:0} gross profit · {item.Stock} left in stock"); Hud.RefreshInspector(); return true;
+        Payroll.PayArrears(State); StockChanged(item); Audio.Play(ShopSound.Checkout, RegisterFor(shopper)!.Position);
+        var cashier = Keeper.CanServe(shopper) ? Keeper.Actor : Staff.CashierFor(shopper);
+        cashier?.React(PersonBeat.Thanks, shopper.Position + Vector3.Up, VoiceLine.Thanks); shopper.React(PersonBeat.Thanks, cashier?.Position + Vector3.Up, VoiceLine.Thanks);
+        Notify($"Sold {receipt.Lines.Count} item(s) · ${price:0}", $"${price - receipt.Lines.Sum(line => line.Item.Product.Cost):0} gross profit · whole basket checked out"); Hud.RefreshInspector(); return true;
     }
-    public void Save(bool announce = true)
+    public bool Save(bool announce = true)
     {
         try
         {
-            Keeper?.SyncPosition(); StorePersistence.Save(SavePath, State);
-            if (announce) Notify("Store saved", "Layout, stock and settled finances saved. Loading starts with the doors closed.");
+            Keeper?.SyncPosition(); Staff?.Sync(); var snapshot = _trading?.SettledSnapshot() ?? State; snapshot.WasOpen = Open; snapshot.OwnerWorkingCheckout = Keeper?.OperatingRegisterId != 0; StorePersistence.Save(SavePath, snapshot);
+            if (announce) Notify("Store saved", "Layout, stock and settled finances saved. Clock, payroll and shifts are preserved; unpaid baskets return to stock.");
+            return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Notify("Couldn't save the store", ex.Message); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Notify("Couldn't save the store", ex.Message); return false; }
+    }
+    public void NewStore()
+    {
+        if (!_automatedChecks && !ArchiveCurrent()) return;
+        Seed(); _autosaveSeconds = 0; ApplyLoaded(State); Keeper.BindState(); Hud.RefreshCatalog();
+        Notify("Your electronics store", "$10,000 · furnish the empty shop, add checkout and a supply cabinet, then stock your shelves.");
+    }
+    private bool ArchiveCurrent()
+    {
+        if (!Save(false)) return false;
+        try { StorePersistence.Archive(SavePath); return true; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Notify("Could not archive this store", ex.Message); return false; }
+    }
+    public string[] Archives()
+    {
+        var folder = Path.Combine(Path.GetDirectoryName(SavePath)!, "archives");
+        try { return Directory.Exists(folder) ? Directory.GetFiles(folder, "store-*.json").OrderDescending().Take(10).ToArray() : []; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Notify("Could not read archives", ex.Message); return []; }
+    }
+    public void RestoreArchive(string path)
+    {
+        if (!Archives().Contains(path, StringComparer.Ordinal)) return;
+        var loaded = StorePersistence.Load(path); if (loaded.State == null) { Notify("Archive is invalid"); return; }
+        if (!ArchiveCurrent()) return;
+        ApplyLoaded(loaded.State); Save(false); Notify("Archived store restored");
     }
     public void TryLoad(bool announce = true)
     {
@@ -524,8 +607,8 @@ public partial class StoreGame : Node3D
     private void ApplyLoaded(StoreState loaded)
     {
         foreach (var s in Shoppers) s.QueueFree(); Shoppers.Clear(); Queue.Clear();
-        State = loaded; _trading = new(State); Open = false; _closing = false; Speed = 1; Audio?.SetPaused(false); Selected = null; _history.Clear();
-        if (Hud != null) { if (State.MigratedFromStackedStock) EnsureSupplyCabinet(); CancelTool(); Rebuild(); Keeper.BindState(); }
+        State = loaded; _trading = new(State); Open = loaded.WasOpen; _arrivals.Reset(); _autosaveSeconds = 0; _closing = false; Speed = 1; Audio?.SetPaused(false); Selected = null; _history.Clear();
+        if (Hud != null) { if (State.MigratedFromStackedStock) EnsureSupplyCabinet(); CancelTool(); Rebuild(); Keeper.BindState(); Staff?.Bind(); ProcessReturns(); }
     }
     private StoreItem? Pick(Vector2 screen)
     {
@@ -534,6 +617,7 @@ public partial class StoreGame : Node3D
         foreach (var i in State.Items)
         {
             var height = i.Kind switch { "shelf" => 2.2f, "lamp" or "plant" => 1.8f, "chair" => 1.1f, "vase" => .53f, "rug" => .03f, "books" or "candle" or "bowl" => .23f, _ => i.Product.Surface > 0 ? i.Product.Surface : 1.1f };
+            if (i.Product.Electronics || i.Product.Levels != null) height = i.Product.Height;
             if (i.Stock == 0) height = .12f;
             var size = i.Footprint + (i.Stock == 0 ? Vector2.One * .12f : Vector2.Zero);
             var min = i.Position - new Vector3(size.X / 2, 0, size.Y / 2); var max = min + new Vector3(size.X, height, size.Y);
@@ -544,7 +628,7 @@ public partial class StoreGame : Node3D
                 var a = (min[axis] - origin[axis]) / direction[axis]; var b = (max[axis] - origin[axis]) / direction[axis];
                 near = Math.Max(near, Math.Min(a, b)); far = Math.Min(far, Math.Max(a, b));
             }
-            if (near <= far && near < nearest) { nearest = near; selected = i; }
+            if (near <= far && (selected?.Id == i.ParentId || near < nearest && selected?.ParentId != i.Id)) { nearest = near; selected = i; }
         }
         return selected;
     }

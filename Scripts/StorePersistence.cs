@@ -22,6 +22,14 @@ public static class StorePersistence
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
+    public static string Archive(string path)
+    {
+        if (TryRead(path) == null) throw new InvalidDataException("There is no valid store to archive.");
+        var folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, "archives");
+        Directory.CreateDirectory(folder);
+        var archived = Path.Combine(folder, $"store-{DateTime.UtcNow:yyyyMMdd-HHmmss-fffffff}.json");
+        File.Copy(path, archived, false); return archived;
+    }
     public static StoreLoadResult Load(string path)
     {
         var state = TryRead(path);

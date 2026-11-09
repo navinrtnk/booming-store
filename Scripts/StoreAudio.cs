@@ -86,6 +86,7 @@ public partial class StoreAudio : Node
     private int SpeakingCount(int limit)
     {
         var count = _game.Keeper?.Actor.IsSpeaking == true ? 1 : 0;
+        foreach (var employee in _game.Staff?.Actors ?? []) if (employee.IsSpeaking && ++count >= limit) return count;
         foreach (var shopper in _game.Shoppers)
             if (shopper.IsSpeaking && ++count >= limit) break;
         return count;

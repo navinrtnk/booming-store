@@ -9,7 +9,7 @@ public sealed class RestockOrders(StoreState state)
     public bool Busy => state.RestockQueue.Count > 0;
     public bool Enqueue(StoreItem item)
     {
-        if (!state.Items.Contains(item) || !item.ForSale || item.Stock != 0 || state.RestockQueue.Contains(item.Id)) return false;
+        if (!state.Items.Contains(item) || !item.ForSale || item.Stock != 0 || state.RestockQueue.Contains(item.Id) || state.Employees.Any(e => e.Target == item.Id)) return false;
         state.RestockQueue.Add(item.Id); return true;
     }
     public bool Collect()
@@ -22,7 +22,7 @@ public sealed class RestockOrders(StoreState state)
     {
         var item = Target;
         if (item == null || item.Id != state.CarriedItemId || item.Stock != 0) return null;
-        item.Stock = 1; state.CarriedItemId = 0; state.RestockQueue.RemoveAt(0); return item;
+        item.RestockNew(); state.CarriedItemId = 0; state.RestockQueue.RemoveAt(0); return item;
     }
     public void Cancel()
     {

@@ -105,15 +105,15 @@ public class ShopperMotionTests
     }
     [Theory]
     [InlineData(0f)] [InlineData(1f)]
-    public void ArrivalsAreDelayedIrregularAndLimitedToThree(float random)
+    public void ArrivalsAreDelayedIrregularAndLimitedToCapacity(float random)
     {
         var arrivals = new CustomerArrivals(() => random); arrivals.Reset();
-        Assert.False(arrivals.Tick(11, 0, true));
-        Assert.True(arrivals.Tick(7, 0, true));
-        Assert.False(arrivals.Tick(23, 1, true));
-        Assert.True(arrivals.Tick(17, 1, true));
+        Assert.False(arrivals.Tick(7, 0, true));
+        Assert.True(arrivals.Tick(5, 0, true));
+        Assert.False(arrivals.Tick(15, 1, true));
+        Assert.True(arrivals.Tick(12, 1, true));
         Assert.False(arrivals.Tick(100, CustomerArrivals.Capacity, true));
-        Assert.False(arrivals.Tick(3, 2, true));
+        Assert.False(arrivals.Tick(2, 2, true));
         Assert.True(arrivals.Tick(1, 2, true));
     }
     [Fact]
@@ -122,8 +122,8 @@ public class ShopperMotionTests
         var arrivals = new CustomerArrivals(() => 0); arrivals.Reset();
         Assert.False(arrivals.Tick(100, 0, false));
         Assert.False(arrivals.Tick(0, 0, true));
-        Assert.False(arrivals.Tick(3, 0, true)); Assert.True(arrivals.Tick(1, 0, true));
-        Assert.False(arrivals.Tick(0, 0, true)); Assert.False(arrivals.Tick(23, 0, true));
+        Assert.False(arrivals.Tick(2, 0, true)); Assert.True(arrivals.Tick(1, 0, true));
+        Assert.False(arrivals.Tick(0, 0, true)); Assert.False(arrivals.Tick(15, 0, true));
     }
     [Fact]
     public void LocalPassingCannotCrossAWall()

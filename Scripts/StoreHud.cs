@@ -9,6 +9,7 @@ public partial class StoreHud : CanvasLayer
     private StoreGame _game = null!;
     private Control _root = null!;
     private VBoxContainer _catalog = null!, _inspector = null!;
+    private Label _reputation = null!;
     private Label _cash = null!, _day = null!, _revenue = null!, _status = null!, _detail = null!, _mode = null!, _keeperStatus = null!;
     private Button _open = null!, _undo = null!, _redo = null!, _fullscreen = null!;
     private readonly List<Control> _panels = [];
@@ -23,28 +24,25 @@ public partial class StoreHud : CanvasLayer
         _root.Theme = new Theme();
         _root.AddThemeFontSizeOverride("font_size", 17);
         var top = Panel(24, 20, -24, 100, true);
-        var row = new HBoxContainer(); row.AddThemeConstantOverride("separation", 25); top.AddChild(row);
-        var brand = new VBoxContainer { CustomMinimumSize = new(235, 0) }; row.AddChild(brand);
-        brand.AddChild(Label("BOOMING STORE", 23)); brand.AddChild(Label("A little space. Endless possibilities.", 12, Muted));
-        row.AddChild(Stat("AVAILABLE CASH", out _cash)); row.AddChild(Stat("TODAY'S SALES", out _revenue)); row.AddChild(Stat("TRADING DAY", out _day));
+        var row = new HBoxContainer(); row.AddThemeConstantOverride("separation", 16); top.AddChild(row);
+        var brand = new VBoxContainer { CustomMinimumSize = new(200, 0) }; row.AddChild(brand);
+        brand.AddChild(Label("BOOMING STORE", 23)); brand.AddChild(_reputation = Label("Electronics · new business", 12, Muted));
+        row.AddChild(Stat("AVAILABLE CASH", out _cash)); row.AddChild(Stat("SESSION SALES", out _revenue)); var tradingDay = Stat("STORE CLOCK", out _day); tradingDay.CustomMinimumSize = new(180, 0); row.AddChild(tradingDay);
         row.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         row.AddChild(actions);
         _fullscreen = Button("Full screen", () => game.SetFullscreen(!game.Preferences.Fullscreen), "F11 or Alt+Enter"); actions.AddChild(_fullscreen);
+        actions.AddChild(Button("UI", ToggleChrome, "Tab · show only the top store bar"));
+        actions.AddChild(Button("Staff", ShowStaff));
         actions.AddChild(Button("Audio", ShowAudioSettings, "Sound levels · M mutes"));
-        actions.AddChild(Button("Save", () => game.Save(), "F5 · Save your layout, stock and finances"));
-        actions.AddChild(Button("Load", () =>
-        {
-            var dialog = new ConfirmationDialog { Title = "Load saved store?", DialogText = "Replace the current session with your saved store?\nChanges since the last save will be lost.", OkButtonText = "Load store" };
-            _root.AddChild(dialog); dialog.Confirmed += () => { game.TryLoad(); dialog.QueueFree(); }; dialog.Canceled += () => dialog.QueueFree(); dialog.PopupCentered(new(440, 160));
-        }, "F9 · Restore the last saved store"));
+        var gameMenu = Button("Game", ShowGameMenu, "Save F5 · Load F9 · New electronics store"); gameMenu.CustomMinimumSize = new(72, 34); actions.AddChild(gameMenu);
         _open = Button("Open store  →", game.ToggleOpen); _open.CustomMinimumSize = new(140, 34); StyleButton(_open, true); actions.AddChild(_open);
 
         var left = Panel(24, 120, 280, -242);
         var library = new VBoxContainer(); library.AddThemeConstantOverride("separation", 10); left.AddChild(library);
-        library.AddChild(Label("THE COLLECTION", 12, Accent));
+        library.AddChild(Label("TECH CATALOG", 12, Accent));
         var tabs = new GridContainer { Columns = 2 }; tabs.AddThemeConstantOverride("h_separation", 6); tabs.AddThemeConstantOverride("v_separation", 6); library.AddChild(tabs);
-        foreach (var c in new[] { "Objects", "Furniture", "Displays", "Decor" })
+        foreach (var c in new[] { "TVs", "Computers", "Audio", "Displays" })
         { var category = c; tabs.AddChild(Button(c, () => { game.Category = category; RefreshCatalog(); })); }
         var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         library.AddChild(scroll); _catalog = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; _catalog.AddThemeConstantOverride("separation", 8); scroll.AddChild(_catalog);
@@ -76,9 +74,69 @@ public partial class StoreHud : CanvasLayer
         tools.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         foreach (var (text, speed) in new[] { ("Ⅱ", 0f), ("1×", 1f), ("3×", 3f) })
         { var value = speed; var b = Button(text, () => game.SetSpeed(value)); tools.AddChild(b); _speed.Add(b); }
-        var footer = Label("Floor: walk · Empty spot: stock · IJKL: move · Arrows: camera · F: follow · C: checkout · F11: full screen · M: mute · WASD: pan · Space: pause", 12, new("35493c"));
+        var footer = Label("Floor: walk · Empty spot: stock · IJKL: move · Arrows: camera · F: follow · C: checkout · F11: full screen · M: mute · WASD: pan · Tab: UI · B: shelf deck · Space: pause", 12, new("35493c"));
         footer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomWide); footer.OffsetTop = -32; footer.OffsetBottom = -10; footer.HorizontalAlignment = HorizontalAlignment.Center; _root.AddChild(footer);
         RefreshCatalog(); RefreshInspector(); RefreshStats();
+    }
+    public bool Compact { get; private set; }
+    public void ToggleChrome()
+    {
+        Compact = !Compact; _game.CancelTool();
+        foreach (var child in _root.GetChildren()) if (child is Control control && child != _panels[0]) control.Visible = !Compact;
+    }
+    private void ShowGameMenu()
+    {
+        var popup = new AcceptDialog { Title = "Your store", OkButtonText = "Done" }; _root.AddChild(popup);
+        var box = new VBoxContainer(); box.AddThemeConstantOverride("separation", 10); popup.AddChild(box);
+        var note = Wrap("Save includes the clock, payroll, employee shifts, prices, shelves and stock. Unpaid basket items return to stock on load. Autosave runs each active real minute and at closing."); note.AddThemeColorOverride("font_color", Paper); box.AddChild(note);
+        box.AddChild(Button("Save game · F5", () => { _game.Save(); popup.QueueFree(); }));
+        void Confirm(string title, string text, Action action)
+        {
+            var dialog = new ConfirmationDialog { Title = title, DialogText = text, OkButtonText = "Continue" }; _root.AddChild(dialog);
+            dialog.Confirmed += () => { action(); dialog.QueueFree(); popup.QueueFree(); }; dialog.Canceled += () => dialog.QueueFree(); dialog.PopupCentered(new(470, 180));
+        }
+        box.AddChild(Button("Load game · F9", () => Confirm("Load saved game?", "Replace this session with your last save? Unpaid baskets return to stock.", () => _game.TryLoad())));
+        box.AddChild(Button("New electronics store · $10,000", () => Confirm("Start a new store?", "Start with an empty shop and $10,000? This store will be archived first so you can restore it later.", _game.NewStore)));
+        box.AddChild(Button("Restore archived store", () =>
+        {
+            var archives = new AcceptDialog { Title = "Archived stores", OkButtonText = "Done" }; _root.AddChild(archives);
+            var list = new VBoxContainer(); archives.AddChild(list);
+            var files = _game.Archives();
+            if (files.Length == 0) list.AddChild(Label("No archived stores yet.", 15, Paper));
+            foreach (var file in files)
+            {
+                var path = file;
+                list.AddChild(Button(System.IO.Path.GetFileNameWithoutExtension(file), () => Confirm("Restore archive?", "Your current store will be archived first.", () => { _game.RestoreArchive(path); archives.QueueFree(); })));
+            }
+            archives.Confirmed += () => archives.QueueFree(); archives.Canceled += () => archives.QueueFree(); archives.PopupCentered(new(480, 350));
+        }));
+        popup.Confirmed += () => popup.QueueFree(); popup.Canceled += () => popup.QueueFree(); popup.PopupCentered(new(480, 380));
+    }
+    internal void ShowStaff()
+    {
+        var popup = new AcceptDialog { Title = "Employees & shifts", OkButtonText = "Done" }; _root.AddChild(popup);
+        var box = new VBoxContainer(); box.AddThemeConstantOverride("separation", 9); popup.AddChild(box);
+        var note = Wrap($"Up to 3 employees · $100 per store hour while summoned. Final shifts round to the nearest 15 minutes. 1 store hour = 2 real minutes at 1×. Wages so far: ${_game.State.WageExpense:0.00}; owed: ${_game.State.WagesPayable:0.00}. The owner is unpaid.");
+        note.AddThemeColorOverride("font_color", Paper); box.AddChild(note);
+        void Refresh() { popup.QueueFree(); ShowStaff(); }
+        foreach (var role in Enum.GetValues<EmployeeRole>())
+        {
+            var chosen = role; var hire = Button("Hire · " + role, () => { _game.Staff.Hire(chosen); Refresh(); });
+            hire.Disabled = _game.State.Employees.Count >= 3; box.AddChild(hire);
+        }
+        for (var i = 0; i < _game.State.Employees.Count; i++)
+        {
+            var index = i; var employee = _game.State.Employees[i];
+            var shift = employee.ClockOutRequested ? "finishing delivery" : employee.Summoned ? $"on shift · {employee.ShiftHours:0.00} h" : "off shift";
+            box.AddChild(Label($"Employee {i + 1} · {employee.Role} · {shift}", 14, Paper));
+            var row = new HBoxContainer(); box.AddChild(row);
+            var clock = Button(employee.Summoned ? "Dismiss / clock out" : "Summon / clock in", () => { if (employee.Summoned) _game.Staff.ClockOut(index); else _game.Staff.Summon(index); Refresh(); });
+            clock.Disabled = employee.ClockOutRequested; row.AddChild(clock);
+            clock.CustomMinimumSize = new(200, 34);
+            var role = Button("Change role", () => { _game.Staff.SetRole(index, (EmployeeRole)(((int)employee.Role + 1) % 3)); Refresh(); }); role.Disabled = employee.Target != 0 || _game.Staff.HasPayment(employee); row.AddChild(role);
+            row.AddChild(Button("Fire", () => { _game.Staff.Dismiss(index); Refresh(); }));
+        }
+        popup.Confirmed += () => popup.QueueFree(); popup.Canceled += () => popup.QueueFree(); popup.PopupCentered(new(550, 500));
     }
     private void ShowAudioSettings()
     {
@@ -144,12 +202,12 @@ public partial class StoreHud : CanvasLayer
     }
     private static VBoxContainer Stat(string heading, out Label value)
     {
-        var v = new VBoxContainer { CustomMinimumSize = new(180, 0) }; v.AddChild(Label(heading, 11, Muted)); value = Label("", 23); v.AddChild(value); return v;
+        var v = new VBoxContainer { CustomMinimumSize = new(135, 0) }; v.AddChild(Label(heading, 11, Muted)); value = Label("", 23); v.AddChild(value); return v;
     }
     public bool IsOverUi()
     {
         var mouse = _root.GetGlobalMousePosition();
-        return _panels.Any(p => p.GetGlobalRect().HasPoint(mouse)) || _root.GetChildren().OfType<Window>().Any(w => w.Visible);
+        return _panels.Any(p => p.Visible && p.GetGlobalRect().HasPoint(mouse)) || _root.GetChildren().OfType<Window>().Any(w => w.Visible);
     }
     private static void Clear(Node n) { foreach (var c in n.GetChildren()) { n.RemoveChild(c); c.QueueFree(); } }
     public void RefreshCatalog()
@@ -160,6 +218,8 @@ public partial class StoreHud : CanvasLayer
             var product = p;
             var card = new PanelContainer(); card.AddThemeStyleboxOverride("panel", Box(new("eeede4"))); _catalog.AddChild(card);
             var col = new VBoxContainer(); col.AddThemeConstantOverride("separation", 5); card.AddChild(col);
+            var picture = new TextureRect { CustomMinimumSize = new(180, 112), ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, MouseFilter = Control.MouseFilterEnum.Ignore };
+            col.AddChild(picture); _game.Pictures.Request(product, picture);
             col.AddChild(Label(p.Name, 16)); col.AddChild(Wrap(p.Description, 12));
             var price = p.Cost;
             var button = Button($"+  Place  ·  ${price:0}", () => _game.BeginPlace(product.Id));
@@ -176,10 +236,11 @@ public partial class StoreHud : CanvasLayer
         {
             var title = Wrap(_game.Open ? "The doors are open." : $"Welcome to {_game.State.StoreName}.", 21);
             title.AddThemeColorOverride("font_color", Ink); _inspector.AddChild(title);
-            _inspector.AddChild(Wrap(_game.Open ? "Watch shoppers explore your collection. Price, stock and access shape each visit." : "A furnished starter shop is yours to reshape. Select anything in the store, or choose an object from the collection."));
+            _inspector.AddChild(Wrap(_game.Open ? "Watch shoppers explore your collection. Price, stock and access shape each visit." : "Build your electronics store from an empty room. Add a checkout counter, supply cabinet and shelving from Displays, then stock products. B changes shelf deck."));
             _inspector.AddChild(new HSeparator());
             _inspector.AddChild(Label("01  Your shopkeeper", 16)); _inspector.AddChild(Wrap("Click clear floor space to walk, or use I/J/K/L. Press F to follow her and 1/2/3 for different views.", 13));
-            _inspector.AddChild(Label("02  Curate a collection", 16)); _inspector.AddChild(Wrap("Each visible object is one item. When it sells, click its empty outline to send her for one replacement.", 13));
+            _inspector.AddChild(Button("Shelf deck · B", _game.CycleShelfLevel));
+            _inspector.AddChild(Label("02  Curate a collection", 16)); _inspector.AddChild(Wrap("Each visible object is one item. When a customer takes it, click its empty outline to send her for one replacement.", 13));
             _inspector.AddChild(Label("03  Open the doors", 16)); _inspector.AddChild(Wrap("Press C or choose Work at checkout to serve. Customers wait until you send her; she stays free for your other tasks.", 13));
             _inspector.AddChild(new HSeparator());
             var nameField = new LineEdit { Text = _game.State.StoreName, PlaceholderText = "Your store name", MaxLength = 32, Editable = _game.Editing };
@@ -205,12 +266,17 @@ public partial class StoreHud : CanvasLayer
         if (item.Kind is "checkout" or "stockroom")
         {
             _inspector.AddChild(Wrap(item.Kind == "checkout" ? "Your shopkeeper serves here. Keep both the customer side and her route behind it clear." : "Your shopkeeper collects one replacement here before carrying it to an empty spot.", 13));
-            if (item.Kind == "checkout") _inspector.AddChild(Button("Work at checkout · C", () => _game.Keeper.ServeCheckout()));
+            if (item.Kind == "checkout")
+            {
+                _inspector.AddChild(Button(item.CheckoutOpen ? "Close this register" : "Open this register", () => _game.Registers.SetOpen(item, !item.CheckoutOpen)));
+                _inspector.AddChild(Button("Work at this register · C", () => _game.Keeper.ServeCheckout(item)));
+            }
             _inspector.AddChild(EditButton("Remove fixture", _game.RemoveSelected));
             _inspector.AddChild(Button("Look closer", () => _game.Camera.ZoomTo(item.Position))); return;
         }
         _inspector.AddChild(EditButton(item.ForSale ? "Keep as store fixture" : "Mark for sale", _game.ToggleSale));
         _inspector.AddChild(new HSeparator());
+        if (item.Used) _inspector.AddChild(Label("USED · AT COST", 16, Accent));
         _inspector.AddChild(Label($"Retail price       ${item.Price:0}", 18));
         var prices = new HBoxContainer(); _inspector.AddChild(prices);
         foreach (var (text, value) in new[] { ("− $5", -5m), ("+ $5", 5m), ("+ $25", 25m) })
@@ -239,7 +305,10 @@ public partial class StoreHud : CanvasLayer
         _fullscreen.Text = _game.Preferences.Fullscreen ? "Windowed" : "Full screen";
         _keeperStatus.Text = _game.Keeper.Status; _keeperStatus.TooltipText = _game.Keeper.Status;
         _cash.Text = $"${_game.State.Cash:N0}"; _revenue.Text = $"${_game.State.DayRevenue:N0}";
-        _day.Text = _game.Open ? $"{_game.State.Day:00}  /  {9 + (int)(_game.State.TradingSeconds / 30) % 12:00}:{(int)(_game.State.TradingSeconds * 2) % 60:00}" : $"{Math.Max(1, _game.State.Day):00}  /  CLOSED";
+        _day.Text = $"D{1 + (int)(_game.State.WorldHours / 24):00} {(_game.Open ? "OPEN" : "CLOSED")}  {StoreClock.Time(_game.State)}";
+        _day.AddThemeFontSizeOverride("font_size", 19);
+        _reputation.Text = $"Happy reputation · {StoreClock.Reputation(_game.State):P0}";
+        _cash.TooltipText = $"Wages ${_game.State.WageExpense:0.00} · owed ${_game.State.WagesPayable:0.00} · net profit ${_game.State.Revenue - _game.State.CostOfSales - _game.State.WageExpense:0.00}";
         _open.Text = _game.Open ? "Close store" : _game.CanOpen ? "Open store  →" : "Finishing up…"; _open.Disabled = !_game.Open && !_game.CanOpen;
         _undo.Disabled = !_game.CanUndo; _redo.Disabled = !_game.CanRedo;
         _status.Text = _game.Status; _detail.Text = _game.StatusDetail;

@@ -109,7 +109,7 @@ public sealed class StoreVisuals
             return n;
         }
         var c = Color(item.Color);
-        switch (item.Kind)
+        if (!ElectronicsVisuals.Build(n, item)) switch (item.Kind)
         {
             case "table":
                 RoundedBox(n, "OakTop", new(2, .11f, 1), new(0, .745f, 0), Oak, .035f);
@@ -197,10 +197,17 @@ public sealed class StoreVisuals
                 Text(n, "RegisterLabel", "BOOMING", new(-.24f, 1.007f, .12f), .001f, Dark.AlbedoColor, 24).RotationDegrees = new(-90, 0, 0);
                 break;
         }
+        if (!preview && item.Kind == "checkout")
+        {
+            var sign = Text(n, "RegisterSign", item.CheckoutOpen ? "OPEN" : "CLOSED", new(-.35f, 1.24f, .25f), .0035f,
+                new(item.CheckoutOpen ? "4eaf7d" : "bf745e"), 36); sign.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+            sign.OutlineSize = 6; sign.OutlineModulate = new("fff5e9");
+        }
         if (!preview && item.ForSale)
         {
             var y = item.Kind switch { "chair" => .98f, "plant" => 1.95f, "lamp" => 1.95f, "vase" => .62f, "shelf" => 2.3f, "checkout" => 1.5f, _ => .4f };
-            var tag = Text(n, "Price", $"${item.Price:0}", new(0, y, 0), .004f,
+            if (item.Product.Electronics) y = item.Product.Height + .12f;
+            var tag = Text(n, "Price", $"${item.Price:0}" + (item.Used ? " · USED" : ""), new(0, y, 0), .004f,
                 new("224b3c"), 28);
             tag.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
             tag.OutlineSize = 5; tag.OutlineModulate = new("f5f1e7");

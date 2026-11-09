@@ -19,6 +19,8 @@ public static class FoundationChecks
         {
             GD.Seed(42);
             Check(game.Editing && !game.Open, "Starter shop must be closed and editable.");
+            Check(game.State.Items.Count == 0 && game.State.Cash == 10000, "New electronics store must be empty with $10,000.");
+            game.FurnishReviewStore();
             Check(game.State.Items.Count == 17, "Starter collection is incomplete.");
             Check(game.FindChildren("*", "Skeleton3D", true, false).Count == 1, "The shop must contain only its playable shopkeeper before customers arrive.");
             Check(game.Keeper.Actor.IsShopkeeper && game.Keeper.Actor.FindChild("FlowingHair", true, false) is MeshInstance3D hair && hair.Mesh is ArrayMesh hairMesh && hairMesh.GetBlendShapeCount() == 3,
@@ -52,6 +54,13 @@ public static class FoundationChecks
                 diagonalMovement |= Math.Abs(step.X) > .0001f && Math.Abs(step.Z) > .0001f;
                 if (!game.Navigation.IsSegmentClear(lastKeeperPosition, now)) throw new InvalidOperationException("Shopkeeper crossed an obstacle while following her route.");
                 lastKeeperPosition = now;
+                if (frame == 20 && game.Keeper.Actor.IsWalking)
+                {
+                    game.Keeper.MoveTo(redirectedWalk); var beforeRedirect = game.Keeper.Actor.Position;
+                    await Frame();
+                    Check(game.Keeper.Actor.Position.DistanceTo(beforeRedirect) > .015f, "Repeated movement commands restarted acceleration instead of retaining momentum.");
+                    lastKeeperPosition = game.Keeper.Actor.Position;
+                }
             }
             Check(diagonalMovement, "The main character still follows only horizontal and vertical steps.");
             Check(game.Keeper.Actor.Position.Z > 2.5f, "The main character did not walk to the requested floor location.");
@@ -98,7 +107,7 @@ public static class FoundationChecks
             var browsingStarted = new Dictionary<Shopper, double>();
             var shortestBrowse = double.PositiveInfinity;
             var testedServiceInterruption = false; var requestedCheckout = false; var resumedCheckout = false; var previousSales = game.State.Sales;
-            for (var frame = 0; frame < 6000 && game.State.Sales < 3; frame++)
+            for (var frame = 0; frame < 6000 && game.State.Transactions < 3; frame++)
             {
                 await Frame(); maximumGuests = Math.Max(maximumGuests, game.Shoppers.Count);
                 if (game.State.Sales > previousSales)
@@ -127,13 +136,13 @@ public static class FoundationChecks
                 if (!testedServiceInterruption && game.Shoppers.Any(s => s.State == Shopper.Activity.Paying))
                 {
                     testedServiceInterruption = true; var cashBeforeCommand = game.State.Cash; var salesBeforeCommand = game.State.Sales;
-                    var currentCustomer = game.Queue[0]; var agreedPrice = currentCustomer.Choice!.Price;
+                    var currentCustomer = game.Queue[0]; var agreedPrice = game.CartValue(currentCustomer); var basketUnits = game.CartCount(currentCustomer);
                     var newest = new Vector3(4.25f, 0, 3.4f);
                     Check(game.Keeper.MoveTo(new(4.9f, 0, 3.8f)) && game.Keeper.MoveTo(newest), "Could not queue the cashier's next walking command.");
                     Check(game.Keeper.Next?.Position == newest && !game.Keeper.Actor.IsWalking && game.Keeper.CanServe(currentCustomer),
                         "The command interrupted payment or failed to replace the previous next command.");
                     for (var away = 0; away < 120; away++) await Frame();
-                    Check(game.State.Cash == cashBeforeCommand + agreedPrice && game.State.Sales == salesBeforeCommand + 1,
+                    Check(game.State.Cash == cashBeforeCommand + agreedPrice && game.State.Sales == salesBeforeCommand + basketUnits,
                         "She must finish exactly the current customer before following the next command.");
                     Check(game.Queue.Count > 0 && !game.Shoppers.Any(s => s.State == Shopper.Activity.Paying) && game.Keeper.Actor.Destination == newest,
                         "She served another lined-up customer before following the newest command.");
@@ -149,8 +158,8 @@ public static class FoundationChecks
                 }
                 foreach (var shopper in game.Shoppers)
                 {
-                    if (shopper.State == Shopper.Activity.Browsing) browsingStarted.TryAdd(shopper, game.State.TradingSeconds);
-                    else if (browsingStarted.Remove(shopper, out var started)) shortestBrowse = Math.Min(shortestBrowse, game.State.TradingSeconds - started);
+                    if (shopper.State == Shopper.Activity.Browsing) { browsingStarted.TryAdd(shopper, game.State.TradingSeconds); shortestBrowse = Math.Min(shortestBrowse, shopper.BrowseDuration); }
+                    else browsingStarted.Remove(shopper);
                 }
             }
             Check(testedServiceInterruption, "No live checkout was available to test the shopkeeper leaving the register.");
@@ -239,6 +248,61 @@ public static class FoundationChecks
             game.SetSpeed(0); game.Audio.Play(ShopSound.Checkout, Vector3.Zero);
             Check(game.Audio.EventCounts.GetValueOrDefault(ShopSound.Checkout) == checkoutsBefore + 8,
                 "A paused store started a new sound.");
+            game.SetSpeed(3);
+            game.Hud.ToggleChrome(); Check(game.Hud.Compact, "Compact UI did not hide side panels.");
+            game.Hud.ToggleChrome(); Check(!game.Hud.Compact, "Compact UI did not restore panels.");
+            var employeeCash = game.State.Cash;
+            Check(game.Staff.Hire(EmployeeRole.Restocking) && game.Staff.Summon(0) && game.State.Cash == employeeCash, "Hiring did not create and charge one employee.");
+            for (var frame = 0; frame < 2500 && !game.State.Employees[0].Collected; frame++) await Frame();
+            Check(game.State.Employees[0].Collected, "Employee failed to collect a physical replacement.");
+            var employeeTarget = game.State.Employees[0].Target;
+            var paidCash = game.State.Cash; var paidWages = game.State.WageExpense;
+            game.Save(false); game.TryLoad(false);
+            Check(game.State.Employees[0].Collected && game.State.Cash == paidCash, "Employee delivery was lost or charged twice on load.");
+            for (var frame = 0; frame < 2500 && game.State.Items.Single(i => i.Id == employeeTarget).Stock == 0; frame++) await Frame();
+            Check(game.State.Items.Single(i => i.Id == employeeTarget).Stock == 1 && game.State.Cash + game.State.WageExpense == paidCash + paidWages,
+                "Employee did not physically deliver exactly one paid replacement.");
+            Check(game.Staff.SetRole(0, EmployeeRole.Sales), "Idle employee could not change roles.");
+            game.ToggleOpen(); game.SetSpeed(3);
+            for (var frame = 0; frame < 2800 && game.Staff.HelpedCustomers == 0; frame++) await Frame();
+            Check(game.Staff.HelpedCustomers > 0, "Sales employee did not approach and help a browsing customer.");
+            var queued = game.Shoppers.FirstOrDefault(s => s.State == Shopper.Activity.Queueing);
+            for (var frame = 0; frame < 2800 && queued == null; frame++) { await Frame(); queued = game.Shoppers.FirstOrDefault(s => s.State == Shopper.Activity.Queueing); }
+            Check(queued != null, "No live cart was available for the morale test.");
+            var cartItem = queued!.Choice!; var salesBeforeAbandon = game.State.Sales;
+            Check(cartItem.Stock == 0, "Customer pickup did not immediately empty its display.");
+            queued.Morale.Advance(81, true); await Frame(); await Frame();
+            Check(queued.State == Shopper.Activity.Leaving && !game.Queue.Contains(queued) && game.State.Sales == salesBeforeAbandon,
+                "Disappointed customer did not leave without paying.");
+            Check(cartItem.Stock == 1 && cartItem.Used && cartItem.Price == cartItem.Product.Cost,
+                "Abandoned product did not return automatically at a zero-profit price.");
+            game.State.NextKeeperCommand = new(KeeperCommandKind.Restock, ItemId: cartItem.Id);
+            game.StockChanged(cartItem);
+            Check(game.State.NextKeeperCommand == null, "An automatically returned item left a stale next-restock command.");
+            var trial = new StoreState(); var trialItem = new StoreItem { Id = 1, Price = 38, ForSale = true }; trial.Items.Add(trialItem);
+            var trade = new StoreTrading(trial);
+            Check(trade.TryReserve(1, trialItem), "Test cart could not take used-return fixture.");
+            trialItem.RestockNew(); trade.TryReserve(2, trialItem); trialItem.RestockNew();
+            trade.Checkout(1); trade.Checkout(2);
+            Check(trialItem.Stock == 1 && trial.Revenue == 76 && trial.CostOfSales == 36 && trade.Checkout(1) == null,
+                "Two carts consumed a replacement or charged twice.");
+            trade.TryReserve(3, trialItem); var savedTrial = trade.SettledSnapshot();
+            Check(savedTrial.Items[0].Stock == 1 && trialItem.Stock == 0 && trial.Cash == savedTrial.Cash,
+                "Settled snapshot lost an unpaid item or mutated a live cart.");
+            trade.Cancel(3, true); trialItem.RestockNew();
+            Check(!trade.ProcessReturns().Any() && trial.Returns.Count == 1, "Used return overwrote fresh stock.");
+            trade.TryReserve(4, trialItem); _ = trade.ProcessReturns().ToArray();
+            Check(trialItem.Used && trialItem.Price == trialItem.Product.Cost && trial.Returns.Count == 0, "Buffered return did not refill the next empty slot.");
+            trade.TryReserve(5, trialItem); Check(trade.Checkout(5)!.Price == trialItem.Product.Cost, "Used unit produced a retail margin.");
+            trialItem.RestockNew(); Check(!trialItem.Used && trialItem.Price == 38, "Fresh replacement did not restore its regular price.");
+            Check(game.Staff.Hire(EmployeeRole.Restocking) && game.Staff.Hire(EmployeeRole.Sales) && !game.Staff.Hire(EmployeeRole.Sales), "Three-employee hiring cap failed.");
+            Check(game.Staff.Dismiss(2) && game.State.Employees.Count == 2, "Idle employee could not be dismissed.");
+            var morale = new CustomerMorale(); morale.Advance(100, false); morale.Advance(60, true);
+            Check(morale.Value == 1, "Morale declined before a real minute of queue time.");
+            morale.Advance(15, true); Check(morale.Mood == CustomerMood.Neutral, "Morale skipped neutral.");
+            morale.Advance(6, true); Check(morale.Mood == CustomerMood.Disappointed, "Long queue did not disappoint.");
+            GD.Print("FOUNDATION_CHECKS complete");
+            await ElectronicsChecks.Run(game, Check);
             GD.Print($"SCENE_CHECKS passed={passed} sales={game.State.Sales} revenue={game.State.Revenue}");
             await game.QuitCleanly();
         }

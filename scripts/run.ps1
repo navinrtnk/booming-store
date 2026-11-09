@@ -45,7 +45,7 @@ try {
         Write-Output "UNIT_TESTS passed=$($counters.passed)"
         $sceneLog = Join-Path $results 'scene.log'
         Invoke-Checked $godot @('--headless', '--path', $projectRoot, '--fixed-fps', '60', '--log-file', $sceneLog,
-            '--quit-after', '13000', '--', '--test')
+            '--quit-after', '60000', '--', '--test')
         if ((Select-String -LiteralPath $sceneLog -Pattern '^(ERROR:|SHADER ERROR:|SCRIPT ERROR:)' -Quiet) -or
             -not (Select-String -LiteralPath $sceneLog -Pattern 'SCENE_CHECKS passed=' -SimpleMatch -Quiet)) {
             throw "Godot scene checks failed or timed out. See $sceneLog"

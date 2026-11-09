@@ -8,6 +8,8 @@ public partial class Shopkeeper : Node
 {
     private enum Work { Idle, Fetching, Collecting, Carrying, Placing, ToRegister, Serving }
     public PersonActor Actor { get; private set; } = null!;
+    public int OperatingRegisterId => _checkoutRequested ? _game.State.KeeperRegisterId : 0;
+    private StoreItem? Register => _game.Registers.Find(_game.State.KeeperRegisterId) ?? _game.Checkout;
     public bool Busy => _orders.Busy;
     public bool IsAtRegister => _game.CashierSpot is { } spot && !Actor.IsWalking && Actor.Position.DistanceTo(spot) < .18f;
     public string Status => _status + (Next is { } command ? " · next: " + command.Description : "");
@@ -18,10 +20,10 @@ public partial class Shopkeeper : Node
     private float _timer, _keyRepeat, _retryCheckout;
     private bool _manualWalk, _checkoutRequested;
     private string _status = "Ready · click floor to walk";
-    private bool ActivePayment => _work == Work.Serving && IsAtRegister && _game.Queue.FirstOrDefault()?.State == Shopper.Activity.Paying;
+    private bool ActivePayment => _work == Work.Serving && IsAtRegister && _game.Registers.Head(OperatingRegisterId)?.State == Shopper.Activity.Paying;
     private bool ActiveTask => ActivePayment || _orders.Carrying || _orders.Busy && _work != Work.Idle;
     public bool CanServe(Shopper shopper) => _work == Work.Serving && !_orders.Busy && !_manualWalk && IsAtRegister &&
-        _game.Queue.FirstOrDefault() == shopper && (Next == null || shopper.State == Shopper.Activity.Paying);
+        _game.Registers.Head(OperatingRegisterId) == shopper && shopper.RegisterId == OperatingRegisterId && Register != null && (Register.CheckoutOpen || shopper.State == Shopper.Activity.Paying) && (Next == null || shopper.State == Shopper.Activity.Paying);
 
     public void Build(StoreGame game)
     {
@@ -30,7 +32,7 @@ public partial class Shopkeeper : Node
     }
     public void BindState()
     {
-        _orders = new(_game.State); _work = Work.Idle; _manualWalk = false; _checkoutRequested = false;
+        _orders = new(_game.State); _work = Work.Idle; _manualWalk = false; _checkoutRequested = _game.State.OwnerWorkingCheckout; if (_checkoutRequested) _work = Work.ToRegister;
         var position = new Vector3(_game.State.KeeperX, 0, _game.State.KeeperZ);
         if (!_game.Navigation.CanStand(position))
             position = Enumerable.Range(0, ShopNavigation.Width * ShopNavigation.Depth)
@@ -40,6 +42,11 @@ public partial class Shopkeeper : Node
         if (_game.CashierSpot is { } counterSpot && position.DistanceTo(counterSpot) < .2f && _game.Checkout != null)
             Actor.Rotation = new(0, Mathf.DegToRad(_game.Checkout.Rotation), 0);
         Actor.SetCargo(_orders.Carrying ? _orders.Target?.Product.Name : null);
+        if (_checkoutRequested && _game.CashierSpot is { } resumeSpot)
+        {
+            if (Actor.Position.DistanceTo(resumeSpot) < .18f) _work = Work.Serving;
+            else Actor.WalkTo(resumeSpot);
+        }
         ResetGesture(); _status = _orders.Busy ? "Resuming restock" : "Ready · click floor to walk";
         SyncPosition(); _game.Hud?.RefreshInspector();
     }
@@ -73,11 +80,11 @@ public partial class Shopkeeper : Node
         if (!_game.Navigation.CanReach(Actor.Position, position)) { _game.Notify("She can't reach that spot."); return false; }
         return Submit(new(KeeperCommandKind.Walk, position.X, position.Z));
     }
-    public bool ServeCheckout()
+    public bool ServeCheckout(StoreItem? requested = null)
     {
-        if (_game.CashierSpot is not { } spot || !_game.Navigation.CanReach(Actor.Position, spot))
-        { _game.Notify("She needs a clear route behind the checkout."); return false; }
-        return Submit(new(KeeperCommandKind.Checkout));
+        var register = _game.Registers.Available(Actor, requested?.Id ?? _game.State.KeeperRegisterId);
+        if (register == null || requested != null && requested.Id != register.Id) { _game.Notify("No available register", "The other cashier already has that register, or its route is blocked."); return false; }
+        return Submit(new(KeeperCommandKind.Checkout, ItemId: register.Id));
     }
     public void Cancel() => Submit(new(KeeperCommandKind.Stop));
     private bool Submit(KeeperCommand command)
@@ -94,8 +101,9 @@ public partial class Shopkeeper : Node
     }
     private bool StartCommand(KeeperCommand command)
     {
+        if (_checkoutRequested && (command.Kind != KeeperCommandKind.Checkout || command.ItemId != OperatingRegisterId) && Register is { } oldRegister) _game.Registers.SetOpen(oldRegister, false);
         _orders.Cancel(); _work = Work.Idle; _manualWalk = false; _checkoutRequested = false;
-        Actor.Stop(); Actor.SetCargo(null); ResetGesture();
+        if (command.Kind != KeeperCommandKind.Walk) Actor.Stop(); Actor.SetCargo(null); ResetGesture();
         switch (command.Kind)
         {
             case KeeperCommandKind.Walk:
@@ -107,6 +115,9 @@ public partial class Shopkeeper : Node
                 _status = "Fetching a replacement"; _game.Hud?.RefreshInspector();
                 _game.Notify("Restocking requested", "She will collect and carry back one replacement."); return true;
             case KeeperCommandKind.Checkout:
+                var assigned = _game.Registers.Available(Actor, command.ItemId);
+                if (assigned == null) { _status = "No available register"; return false; }
+                _game.State.KeeperRegisterId = assigned.Id;
                 if (_game.CashierSpot is not { } spot || !Actor.WalkTo(spot)) { _status = "Checkout route blocked"; return false; }
                 _checkoutRequested = true; _work = Work.ToRegister; _status = "Returning to checkout"; return true;
             default:
@@ -167,7 +178,7 @@ public partial class Shopkeeper : Node
                 Actor.ReachTarget = item.Position + Vector3.Up * .18f;
                 Actor.GestureAmount = Mathf.Sin(Mathf.Clamp(1 - _timer / 2.2f, 0, 1) * Mathf.Pi); _timer -= dt;
                 if (_timer > 0) break;
-                if (item.ParentId == 0 && item.Kind != "rug" && _game.Shoppers.Any(s => InsideFootprint(s.Position, item)))
+                if (item.ParentId == 0 && item.Kind != "rug" && _game.People.Any(s => InsideFootprint(s.Position, item)))
                 { _timer = .2f; _status = "Waiting for the aisle to clear"; break; }
                 var delivered = _orders.Deliver();
                 if (delivered == null) { Fail("This display spot is no longer available."); break; }
@@ -195,13 +206,14 @@ public partial class Shopkeeper : Node
             if (_game.CashierSpot is not { } spot || !Actor.WalkTo(spot)) { _status = "Checkout route blocked"; _retryCheckout = 1; return; }
             _work = Work.ToRegister; _status = "Returning to checkout";
         }
-        if (_work == Work.ToRegister && !Actor.IsWalking) _work = Work.Serving;
-        if (_work != Work.Serving || _game.Checkout == null) return;
-        Actor.Face(_game.Checkout.Position, dt);
-        if (_game.Queue.Count == 0) { _status = "At checkout · waiting"; ResetGesture(); return; }
+        if (_work == Work.ToRegister && !Actor.IsWalking) { _work = Work.Serving; if (Register != null) _game.Registers.SetOpen(Register, true); }
+        if (_work != Work.Serving || Register == null) return;
+        Actor.Face(Register.Position, dt);
+        var customer = _game.Registers.Head(OperatingRegisterId);
+        if (customer == null) { _status = "At checkout · waiting"; ResetGesture(); return; }
         _status = "Serving customers"; Actor.Say("Welcome in!");
-        Actor.AttentionTarget = _game.Queue[0].Position + Vector3.Up * 1.45f;
-        Actor.ReachTarget = _game.Checkout.Position + new Vector3(.4f, 1.22f, -.12f).Rotated(Vector3.Up, Mathf.DegToRad(_game.Checkout.Rotation));
+        Actor.AttentionTarget = customer.Position + Vector3.Up * 1.45f;
+        Actor.ReachTarget = Register.Position + new Vector3(.4f, 1.22f, -.12f).Rotated(Vector3.Up, Mathf.DegToRad(Register.Rotation));
         Actor.GestureAmount = .20f + Mathf.Sin((float)_game.State.TradingSeconds * 1.5f) * .07f;
     }
     private void CarryTo(StoreItem item)
@@ -216,8 +228,9 @@ public partial class Shopkeeper : Node
         return Enumerable.Range(0, ShopNavigation.Width * ShopNavigation.Depth)
             .Select(i => ShopNavigation.Point(new(i % ShopNavigation.Width, i / ShopNavigation.Width)))
             .Where(p => item.ParentId != 0 || Mathf.Abs(p.X - item.X) >= h.X || Mathf.Abs(p.Z - item.Z) >= h.Y)
-            .Where(p => p.DistanceTo(new(item.X, 0, item.Z)) >= .4f && _game.Navigation.CanReach(Actor.Position, p))
-            .OrderBy(p => p.DistanceSquaredTo(new(item.X, 0, item.Z))).ThenBy(p => p.DistanceSquaredTo(Actor.Position)).Cast<Vector3?>().FirstOrDefault();
+            .Where(p => p.DistanceTo(new(item.X, 0, item.Z)) >= .4f)
+            .OrderBy(p => p.DistanceSquaredTo(new(item.X, 0, item.Z))).ThenBy(p => p.DistanceSquaredTo(Actor.Position))
+            .Where(p => _game.Navigation.CanReach(Actor.Position, p)).Cast<Vector3?>().FirstOrDefault();
     }
     private void Fail(string message)
     {

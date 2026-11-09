@@ -28,7 +28,7 @@
 
 Use Godot 4.7.2 .NET with .NET 8 SDK. `dotnet build` treats warnings as errors. `scripts/run.ps1` discovers `GODOT_BIN`, a PATH installation, or optional portable tools under `%LOCALAPPDATA%/BoomingStore/Tools` and the existing Bartender tool directory. No engine or SDK is checked into Git.
 
-Forward+ is the visual target. `-Compatibility` offers a reduced renderer for troubleshooting; screenshots and primary visual review use Forward+. The Windows export is self-contained with .NET runtime files. Export templates matching the engine version must be installed. `VERSION`, project metadata and export metadata are currently 0.1.5.
+Forward+ is the visual target. `-Compatibility` offers a reduced renderer for troubleshooting; screenshots and primary visual review use Forward+. The Windows export is self-contained with .NET runtime files. Export templates matching the engine version must be installed. `VERSION`, project metadata and export metadata are currently 0.1.7.
 
 ## Source control
 
@@ -61,3 +61,23 @@ Navigation conservatively expands floor-object footprints on a 0.5 m grid. It su
 `python scripts/generate_audio.py` uses an isolated development venv with kokoro-onnx 0.4.7, NumPy, SciPy and soundfile. Pinned model and voice-embedding URLs/hashes are in Assets/Audio/sources.json; downloads stay in ignored .tools/audio-source. The script creates original effects/music, fictional vocal bites and mouth envelopes. The app bundles only the resulting WAVs and JSON, with no neural inference dependency. See Assets/Audio/SOURCES.md for licenses and regeneration details.
 
 `StoreGame.QuitCleanly` stops players and briefly lets the audio thread drain before closing, including debug scene checks. This avoids the engine's asynchronous playback references remaining alive at immediate exit. Audio settings use user://preferences.json; automated tests use .godot/test-results/preferences.json.
+
+## Staff and pickup inventory
+
+`EmployeeManager` coordinates up to three independent actors with persistent `EmployeeData` delivery claims. `CustomerMorale` counts unscaled queue seconds. `StoreTrading` removes units at reservation, keeps carts independent of replacement stock, and restores canceled units through buffered `ReturnedUnit` records. `SettledSnapshot` resolves unpaid carts in a copy, leaving the live session untouched. Role changes and dismissal require an idle employee. Returns wait for claims and person clearance; employees cannot share the owner's claim. Used goods keep their normal retail price separately and sell at wholesale cost.
+
+Movement redirects preserve travel velocity. Work-point candidates are sorted before reachability checks, avoiding full-layout searches for every candidate. Navigation stand checks no longer allocate a predicate per probe. Main-character gait and body models are unchanged.
+
+Runtime images retain the existing TAA/MSAA rendering for stable lighting. Morale labels cache the displayed mood/level instead of rebuilding text each frame.
+
+## Electronics architecture · 0.1.7
+
+Product metadata defines physical dimensions and supported shelf levels. StoreLayout validates deck clearance; StoreGame selects the deck during placement. ElectronicsVisuals supplies original merchandise/rack geometry. CatalogPictures renders requested models once in an isolated SubViewport, caches ImageTextures and disables further studio rendering between requests.
+
+StoreClock owns 24-hour time, recent-departure reputation and traffic factors. Payroll settles completed quarters and rounds final shifts; paid blocks persist and shortfalls become wage debt. Only summoned staff have worker actors. EmployeeData includes attendance, shift hours, register claims and physical delivery state. Restockers reserve distinct items and work positions.
+
+Payroll.cs is separate from the clock/traffic policy. Employee work stages use a named enum for delivery and cashier transitions. Per-frame line-head/index queries scan the existing queue without constructing lists, and register lookup avoids sorting the catalog. Person enumeration avoids temporary concatenations/owner arrays, and empty return buffers skip placement work. Register ordering, queue fairness, prices, wage rounding and rendered assets are unchanged by this cleanup.
+
+CheckoutCoordinator projects the global arrival-ordered queue into two register lines. Paying shoppers stay locked; waiters rebalance on opening/closure. Cashier and owner assignments exclude one another. Manual closure persists across save/load. StoreTrading supports up to three line items per basket, charges agreed prices atomically once, and keeps display replacements independent.
+
+Schema 3 adds clock, payroll, attendance, reputation, register state and transaction totals. Schemas 1/2 remain readable. The production seed is empty with $10,000; regression furniture exists only in debug fixtures. Save snapshots restore unpaid units without mutating live carts. Game saves preserve open status, clock and paid deliveries. New Store/archive restoration first archive the outgoing session. Autosaves, archives and review outputs stay outside Git. See ELECTRONICS.md for current behavior; earlier sections describe the foundation's component layout.

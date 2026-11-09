@@ -1,4 +1,6 @@
-# First milestone · 0.1.5
+# Foundation notes · 0.1.6
+
+These notes describe the preceding foundation. See [Electronics store 0.1.7](ELECTRONICS.md) for the current start, catalog, staffing, wages, registers, traffic and saves.
 
 The furnished starter lot is 12 × 10 metres. The initial fixtures, collection and building are provided with $9,000 in cash. There are no character needs, rent, taxes, wages or financial penalties in this first milestone.
 
@@ -10,7 +12,7 @@ Small objects can sit on the oak table, stone plinth, or gallery shelf's middle 
 
 Drag across the floor with Walls, Windows or Doors to create straight 1 m segments. A short click creates one segment. Segments replace existing sections. Erase wall removes the nearest section. Doorways remain open for navigation. Floor finishes cost $8 per tile; select Oak, Marble or Dark tile in the inspector. Cutaway hides near walls as the camera orbits. The floor area itself is fixed in this milestone.
 
-Select objects to move, rotate, recolor, copy, change price, mark for sale or remove. Each placement costs one wholesale unit and shows exactly one object. A purchase removes that object, leaving an empty outline that remembers its design and price. There is no hidden stack and no restock action in the object's menu.
+Select objects to move, rotate, recolor, copy, change price, mark for sale or remove. Each placement costs one wholesale unit and shows exactly one object. A customer taking an item removes that object, leaving an empty outline that remembers its design and price. There is no hidden stack and no restock action in the object's menu.
 
 ## Your shopkeeper
 
@@ -18,9 +20,9 @@ Click clear floor space to send her walking, or use I/J/K/L to move relative to 
 
 Press C or choose Work at checkout on the counter to send her back to serve. Customers wait until you explicitly send her. A line never sends her back after walking or restocking, including when loading older saves. Once you choose checkout, she serves there until you give her another instruction. Stop finishes the current task, then leaves her waiting for your next instruction; C sends her back to checkout. All movement and tasks respect pause and game speed.
 
-Click an empty outline in the world to request one replacement. She walks to the supply cabinet, collects a labeled carton, carries it back, and places exactly one item at the chosen spot. Click another empty outline to choose her next delivery; a later command replaces that next job. Replacements cost the product's wholesale price, charged when collected; delivery does not charge again. A failed or unreachable delivery refunds its undelivered replacement. Stop waits for a delivery already in progress to finish. No item refills automatically. Restocking works while the shop is open or closed, and pauses with the game. Keep the supply cabinet and target reachable. For floor furniture, she waits for customers to clear its footprint before placing it.
+Click an empty outline in the world to request one replacement. She walks to the supply cabinet, collects a labeled carton, carries it back, and places exactly one item at the chosen spot. Click another empty outline to choose her next delivery; a later command replaces that next job. Replacements cost the product's wholesale price, charged when collected; delivery does not charge again. A failed or unreachable delivery refunds its undelivered replacement. Stop waits for a delivery already in progress to finish. Hired restockers refill empty spots automatically; abandoned goods also return automatically. Restocking works while the shop is open or closed, and pauses with the game. Keep the supply cabinet and target reachable. For floor furniture, she waits for customers to clear its footprint before placing it.
 
-The playable shopkeeper uses the former cashier's face and body, with a casual sage cotton dress, tan flats, a warmer smile and loose long hair with restrained tip movement as she walks and turns. There is one worker in the store: she serves and restocks herself. Layout and price edits are locked while she has a restocking task; finish the task to redesign.
+The playable shopkeeper uses the former cashier's face and body, with a casual sage cotton dress, tan flats, a warmer smile and loose long hair with restrained tip movement as she walks and turns. The owner serves and restocks; hired employees can assist her. Layout and price edits are locked while she has a restocking task; finish the task to redesign.
 
 The checkout, supply cabinet and occupied displays stay fixtures. Empty displays, rugs and other furniture can be marked for sale. Keep exactly one checkout with a clear customer approach on its front side. Leave space and a clear route behind the counter for her too. Rename the store in the right panel; its sign appears on an intact rear wall.
 
@@ -38,7 +40,7 @@ Use Audio for master, voices, store effects and music levels; M toggles mute. Pr
 
 Open store checks the route to checkout and that at least one stocked product is reachable. Up to three shoppers visit at once. The first visitor arrives after 12–18 seconds; later arrivals are 24–40 seconds apart, with extra breathing room when the entrance is occupied. Customers walk at a relaxed, slightly varied pace, slow into stops, and make room for one another. Clear floor uses a direct line to the exact destination. Around furniture and partitions, any-angle search uses Euclidean travel cost and visible shortcuts, with 20 cm of body clearance; turns are rounded only when the whole curve stays clear. Feet follow a distance-driven, body-scaled step cycle with planted stance and low swing clearance.
 
-Shoppers look at one to three displays before deciding, linger 8–14 seconds at each, and take short looking-around pauses between displays. They avoid choosing an already occupied viewing spot. They evaluate the price against suggested retail, and either browse elsewhere, leave, or join the checkout queue. Prices agreed when entering the queue are honored at payment. Goods are reserved while queued; money and stock change only when payment finishes.
+Shoppers look at one to three displays before deciding, linger 8–14 seconds at each, and take short looking-around pauses between displays. They avoid choosing an already occupied viewing spot. They evaluate the price against suggested retail, and either browse elsewhere, leave, or join the checkout queue. Prices agreed when entering the queue are honored at payment. Goods are reserved while queued; the display becomes empty immediately when the shopper takes the item. Restock that spot while they queue; their cart and any replacement are independent. Money and cost of sales settle only at checkout.
 
 Your shopkeeper must physically reach the register before payment starts. Customers wait while she is elsewhere. If you issue a command during payment, she completes that one customer first, then leaves the rest of the line waiting while she follows it. Shoppers have anatomically proportioned, skinned MakeHuman models with skin and clothing textures, procedural walking, arm gestures and facial poses. Animations and furniture are an initial art pass; these are not final production-quality characters or a complete character customization system. Purchases are represented by a shopping bag rather than a separate carry animation for every product.
 
@@ -50,4 +52,18 @@ Layout edits are disabled during trading and while shoppers finish. Pause and 3�
 
 Save uses `user://store.json` and keeps the preceding save as `store.json.bak`. On Windows this is normally `%APPDATA%/Godot/app_userdata/Booming Store/`. The game restores a valid save on startup, falling back to the backup if necessary. Load replaces the current session with the saved state, closes the store, and clears unpaid shopping carts. Layout, finishes, store name, single-item stock, cash, cumulative sales, daily financial totals, shopkeeper position, the newest next command, active restocking and any replacement already paid for and being carried are preserved. A carried replacement resumes its delivery without being purchased again. Camera position, speed and transient shoppers are not saved. Older saves with stacked stock are migrated to one item per visible object; excess units are credited back at their wholesale cost, without changing sales or profit. A supply cabinet is provided in a free location when an older layout has room. Loading through the button asks for confirmation; F9 loads immediately.
 
-F12 writes `store-screenshot.png` alongside the save. There is no cloud save, multiplayer, external model import, staff management, mod loader, multiple floors, or expandable lot yet.
+F12 writes `store-screenshot.png` alongside the save. There is no cloud save, multiplayer, external model import, mod loader, multiple floors, or expandable lot yet.
+
+## Employees, morale and returns
+
+Use **Staff** in the top bar to hire up to three employees for a one-time $150 each. This prototype has no recurring wages. Switch an idle employee between Restocking and Sales, or dismiss them. Role changes and dismissal wait until their current delivery finishes (the buttons remain disabled during it).
+
+Restockers choose an unclaimed empty spot, walk to the supply cabinet, pay wholesale once at collection, and carry/place one replacement. Owner and employees cannot claim the same display. Staff work while open or closed and pause with the game. Hiring, roles, positions and paid deliveries persist across saves. Sales staff approach browsers, exchange gestures/chatter and help them choose a little sooner. Their help does not override checkout morale yet.
+
+Each customer's meter shows Happy, Neutral or Disappointed. Queue time uses real active seconds, independent of 1×/3× speed, including walking into line. Pause freezes this timer. The first 60 seconds cause no loss. Mood then declines over 30 seconds: it becomes Neutral after 70 seconds and Disappointed after 80 seconds. Happy and Neutral customers pay normally. Once actual payment starts, that transaction finishes without further queue-time decay.
+
+Disappointed customers leave without paying. Their unit returns automatically as **USED · AT COST**, priced at its wholesale cost (zero gross profit). If its display has a replacement, is occupied by a person, or has a paid delivery underway, the return waits in return stock until that spot is clear and empty. Returns never overwrite replacements, duplicate a sale, or cancel a paid delivery. A fresh wholesale replacement restores the regular retail price. Used prices cannot be increased.
+
+Saving resolves unpaid carts into available stock/return stock in a separate snapshot; it does not change live carts. Loading drops transient customers and preserves the units they had not paid for, buffered returns and employee deliveries. Returned stock is tied to its display; removing the display also recovers 70% of its buffered units' wholesale value.
+
+**Tab** or the top **UI** button hides/restores the side panels, bottom tools, owner controls and message area. The top store information and controls remain visible. Hidden panels do not intercept floor clicks. This view toggle is session-local.

@@ -8,12 +8,23 @@ public static class OwnerPreview
 {
     public static async Task Run(StoreGame game)
     {
+        if (OS.GetCmdlineUserArgs().Contains("--electronics")) { await ElectronicsPreview.Run(game); return; }
+        game.FurnishReviewStore();
         var folder = ProjectSettings.GlobalizePath("res://.tools/owner-review"); Directory.CreateDirectory(folder);
         async Task Frame() => await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
         async Task Capture(string name)
         {
             await game.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             game.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(folder, name + ".png"));
+        }
+        if (OS.GetCmdlineUserArgs().Contains("--layout-only"))
+        {
+            game.Staff.Hire(EmployeeRole.Restocking); game.Staff.Hire(EmployeeRole.Sales); game.SetSpeed(3);
+            game.Keeper.MoveTo(new(-1.4f, 0, 2.5f));
+            for (var i = 0; i < 180; i++) await Frame();
+            game.Camera.Home(); game.Hud.ToggleChrome(); await Frame(); await Capture("compact-store");
+            game.Hud.ToggleChrome(); game.Hud.ShowStaff(); await Frame(); await Capture("staff-controls");
+            GD.Print("LAYOUT_REVIEW completed"); await game.QuitCleanly(); return;
         }
         GD.Seed(42); game.SetSpeed(3); game.Keeper.MoveTo(new(-1.4f, 0, 2.5f));
         for (var i = 0; i < 400 && game.Keeper.Actor.IsWalking; i++) await Frame();
@@ -39,6 +50,14 @@ public static class OwnerPreview
         }
         game.SetSpeed(1); game.Camera.Home(); await Frame(); await Capture("store-overview");
         GD.Print($"OWNER_PREVIEW stock={target.Stock} frames={frame} carrying={carryingFrame} status={game.Status}");
+        if (OS.GetCmdlineUserArgs().Contains("--capture-staff"))
+        {
+            game.Staff.Hire(EmployeeRole.Restocking); game.Staff.Hire(EmployeeRole.Sales);
+            for (var i = 0; i < 90; i++) await Frame();
+            game.Hud.ShowStaff(); await Frame(); await Capture("staff-controls");
+            foreach (var dialog in game.Hud.FindChildren("*", "AcceptDialog", true, false)) dialog.QueueFree();
+            await Frame(); game.Hud.ToggleChrome(); await Frame(); await Capture("compact-store"); game.Hud.ToggleChrome();
+        }
         if (!OS.GetCmdlineUserArgs().Contains("--keep-review-open")) await game.QuitCleanly(target.Stock == 1 ? 0 : 1);
     }
 }

@@ -121,7 +121,7 @@ public class RestockTests
         var item = Fixtures.Item(); item.Stock = 5; var state = Fixtures.Shop(item); state.Schema = 1;
         state.Revenue = 38; state.CostOfSales = 18; state.Sales = 1;
         var loaded = StoreState.Parse(state.Serialize());
-        Assert.True(loaded.MigratedFromStackedStock); Assert.Equal(2, loaded.Schema); Assert.Equal(1, loaded.Items[0].Stock); Assert.Equal(9072m, loaded.Cash);
+        Assert.True(loaded.MigratedFromStackedStock); Assert.Equal(3, loaded.Schema); Assert.Equal(1, loaded.Items[0].Stock); Assert.Equal(9072m, loaded.Cash);
         Assert.Equal(38m, loaded.Revenue); Assert.Equal(18m, loaded.CostOfSales); Assert.Equal(1, loaded.Sales);
         var nextLoad = StoreState.Parse(loaded.Serialize());
         Assert.Equal(9072m, nextLoad.Cash); Assert.False(nextLoad.MigratedFromStackedStock);

@@ -16,6 +16,7 @@ public partial class PersonActor : Node3D
     public Vector3? ReachTarget { get; set; }
     public float GestureAmount { get; set; }
     public bool CarryingStock { get; private set; }
+    public bool HasBasket { get; set; }
     protected bool _bought;
     private Skeleton3D _rig = null!;
     private Node3D _visual = null!, _bag = null!, _cargo = null!;
@@ -45,7 +46,7 @@ public partial class PersonActor : Node3D
     public void Build(StoreGame game, int profile, bool shopkeeper = false)
     {
         _game = game; IsShopkeeper = shopkeeper; _personality = profile;
-        _walkSpeed = .78f + profile % 5 * .025f;
+        _walkSpeed = shopkeeper ? .98f : .78f + profile % 5 * .025f;
         _clock = profile * 1.73f;
         _visual = (shopkeeper ? GD.Load<PackedScene>("res://Assets/Customer/Avatars/shopkeeper.glb") : Scenes[profile % Scenes.Length]).Instantiate<Node3D>(); AddChild(_visual);
         _flowingHair = _visual.FindChild("FlowingHair", true, false) as MeshInstance3D;
@@ -137,7 +138,7 @@ public partial class PersonActor : Node3D
         if (IsWalking) Move(dt);
         else
         {
-            _moveSpeed = Mathf.MoveToward(_moveSpeed, 0, dt * 1.7f);
+            _moveSpeed = Mathf.MoveToward(_moveSpeed, 0, dt * 3.8f);
             _laneOffset = _laneOffset.MoveToward(Vector3.Zero, dt * .2f);
             var settled = _routePosition + _laneOffset;
             if (_game.Navigation.CanStep(Position, settled)) Position = settled;
@@ -187,7 +188,7 @@ public partial class PersonActor : Node3D
     private void Move(float dt)
     {
         var direction = (_path.Peek() - _routePosition).Normalized();
-        var desiredSpeed = Mathf.Min(_walkSpeed, Mathf.Sqrt(2 * 1.7f * _remainingDistance));
+        var desiredSpeed = Mathf.Min(_walkSpeed, Mathf.Sqrt(2 * 3.8f * _remainingDistance));
         var heading = Mathf.Atan2(direction.X, direction.Z);
         var turn = Mathf.Abs(Mathf.AngleDifference(Rotation.Y, heading));
         desiredSpeed *= Mathf.Lerp(1, .4f, Mathf.Clamp(turn / (Mathf.Pi / 2), 0, 1));
@@ -208,7 +209,7 @@ public partial class PersonActor : Node3D
             }
             else desiredSpeed *= Mathf.Clamp((distance - .34f) / .36f, 0, 1);
         }
-        _moveSpeed = Mathf.MoveToward(_moveSpeed, desiredSpeed, dt * 1.7f);
+        _moveSpeed = Mathf.MoveToward(_moveSpeed, desiredSpeed, dt * 3.8f);
         var budget = _moveSpeed * dt;
         while (_path.Count > 0 && budget > 0)
         {
@@ -305,7 +306,7 @@ public partial class PersonActor : Node3D
                     "Talk" => MouthAmount * .65f, "BrowLift" => _social.Weight * .16f, _ => 0 });
             _rig.SetBonePoseRotation(bone, q.Normalized());
         }
-        _bag.Visible = _bought && !CarryingStock;
+        _bag.Visible = (_bought || HasBasket) && !CarryingStock;
         _bag.Rotation = new(0, 0, stride * .025f);
         _cargo.Visible = CarryingStock;
     }

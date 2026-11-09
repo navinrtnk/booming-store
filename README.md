@@ -1,17 +1,17 @@
 # Booming Store
 
-A customizable 3D shop built with **Godot 4.7.2 .NET and C#**.
+A customizable 3D electronics store built with **Godot 4.7.2 .NET and C#**.
 
 **Original project by [Navin Ratnayake (@navinrtnk)](https://github.com/navinrtnk).** Copyright © 2026 Navin Ratnayake. [Rights and licensing](LICENSE).
 
-![The editable shop and its collection](docs/store-overview.png)
+![Electronics shelving, pictured catalog and coordinated checkout](docs/store-overview.png)
 
-Start with a furnished boutique and $9,000. Draw walls, add doors and windows, change floors, place and recolor furniture, and arrange products on displays. Set prices, open the shop, and watch customers stroll between displays, take their time browsing, queue and purchase. Your shopkeeper runs checkout and carries replacements to sold-out spots herself. Shoppers follow clear diagonal routes around the store. You choose when she works at checkout; a waiting line never takes over her movement. She finishes the current customer or delivery, then follows your newest command. Characters wave, smile and chat in playful fictional voices, with spatial store sounds and a quiet original boutique theme. Each visible object is one item. Close to redesign. Undo/redo and local save/load preserve your layout, stock and settled finances.
+Start with an empty shop and $10,000. Build multi-level shelving, arrange tiered TVs, computers and audio products, and set prices. The pictured catalog renders the actual models. Displays empty at pickup; shoppers usually buy one item and occasionally collect a small basket. Hire up to three employees into restocking, sales or cashier roles. Summon/dismiss shifts at $100 per store hour, rounded to 15-minute increments; the owner is unpaid. Two registers coordinate their checkout lines. Traffic rises in afternoons/evenings, falls overnight and responds to recent customer moods. Long queues lower morale; abandoned goods return at cost. Saves preserve stock, shifts, payroll, clock and reputation.
 
-Install **Godot 4.7.2 .NET** and **.NET 8**, open `project.godot`, build, and press **F5**. On Windows, `./scripts/run.ps1` builds and launches; `-BuildOnly` checks the build/import; `-Test` runs unit and headless gameplay checks; `-Export` verifies and creates a versioned Windows ZIP. Extract the entire ZIP before running `BoomingStore.exe`.
+Install **Godot 4.7.2 .NET**, **.NET 8 SDK** and **Git LFS**. Clone with LFS assets, open `project.godot`, build, and press **F5**. On Windows, `./scripts/run.ps1` builds and launches; `-Test` runs unit/headless checks and `-Export` creates a versioned Windows ZIP. Extract the entire ZIP before running `BoomingStore.exe`.
 
 If Windows blocks scripts on the WSL share, run `pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/run.ps1` for this invocation.
 
-**Click clear floor** or use **I/J/K/L** to move her. **Arrow keys** change the camera angle; **1/2/3** select views; **F** follows her; **C** sends her to checkout. **F11** or **Alt+Enter** toggles fullscreen; **M** mutes; Audio sets volume levels. **WASD** pans; **right-drag** or **Q/E** orbits; **wheel** or **+/−** zooms; **Home** resets the view. Click an object to inspect it. **R** rotates; **Esc** cancels; **Delete** removes the selected object; **Ctrl+Z/Y** undo/redo; **Space** pauses; **F5/F9** save/load; **F12** captures a screenshot.
+Use **Game** for save/load, archives and a new electronics store; existing saves are preserved. **Staff** hires, assigns, summons, clocks out and fires employees. **B** cycles shelf decks while placing goods. Click floor or use **I/J/K/L** to move the owner. **C** mans a free register; select a counter to open/close it or work there. **Tab** hides side/bottom panels; **F11 / Alt+Enter** toggles fullscreen. **Arrows/Q/E** orbit, **WASD** pans, **wheel/+/-** zooms, **1/2/3** choose views, **F** follows, **Home** resets. **R** rotates; **Esc** cancels; **Space** pauses; **F5/F9** save/load; **M** mutes; **Ctrl+Z/Y** undo/redo; **F12** captures a screenshot.
 
-See [gameplay and limitations](docs/GAMEPLAY.md), [development](docs/DEVELOPMENT.md), and [asset credits](THIRD_PARTY_NOTICES.md). See [automated checks](Tests/README.md) for test coverage and commands.
+See [electronics gameplay and limits](docs/ELECTRONICS.md), [development](docs/DEVELOPMENT.md), [tests](Tests/README.md) and [asset credits](THIRD_PARTY_NOTICES.md).

@@ -28,4 +28,6 @@ Windows builds include .NET runtime files, licensed under MIT and other applicab
 
 ## Development tools
 
+Electronics, steel racks and their catalog renders are original project geometry in ElectronicsVisuals.cs, covered by the root rights notice. The catalog renders these same models locally; screen artwork uses original geometric color fields. Product tiers/specifications are fictional game content.
+
 Python and NumPy are used only to prepare assets. Git LFS is used only for development source storage. They are not embedded into the game. The runtime uses Godot's built-in default font; no proprietary system font files are redistributed.
